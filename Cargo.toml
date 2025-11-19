@@ -1,0 +1,24 @@
+[package]
+name = "soksak"
+version = "0.1.0"
+edition = "2024"
+
+
+[dependencies]
+clap = { version = "4.5.51", features = ["derive"] }
+ffmpeg-sidecar = "2.3.0"
+iced = "0.13.1"
+whisper-rs = { version = "0.15.1", features = ["metal"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.11", features = ["json"] }
+indicatif = "0.17"
+anyhow = "1.0"
+chrono = "0.4"
+regex = "1.10"
+dirs = "5.0"
+hound = "3.5"                                             # For reading WAV files
+uuid = { version = "1.0", features = ["v4"] }
+audrey = "0.3.0"
