@@ -35,6 +35,7 @@ pub async fn process_translation(
     llm_str: &str, // "provider_id/model"
     target_lang: &str,
     window_size: usize,
+    prepending_system_prompt: &str,
     filters: Option<&Vec<FilterConfig>>,
     pb: &ProgressBar,
 ) -> Result<Vec<TranslatedSegment>> {
@@ -71,11 +72,11 @@ pub async fn process_translation(
 
         // 1. Translate Batch
         let system_prompt = format!(
-            "You are a professional video subtitle translator. Translate the following JSON list of sentences into {}. \
+            "{}You are a professional video subtitle translator. Translate the following JSON list of sentences into {}. \
             Maintain the JSON structure with the same 'id' for each item. \
             Use the provided summary to ensure natural flow and correct tone. \
             Output ONLY the JSON response: [{{ \"id\": 0, \"translated_text\": \"...\" }}, ...]",
-            target_lang
+            prepending_system_prompt, target_lang
         );
 
         let messages = vec![

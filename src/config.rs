@@ -391,6 +391,7 @@ pub struct TranslationConfig {
     pub llm: String, // "{provider_id}/{model}"
     pub target_lang: String,
     pub window: usize,
+    pub system_prompt: Option<String>,
     pub filters: Option<Vec<FilterConfig>>,
 }
 

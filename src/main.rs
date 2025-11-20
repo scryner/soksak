@@ -107,6 +107,7 @@ async fn main() -> anyhow::Result<()> {
                         &tc.llm,
                         &tc.target_lang,
                         tc.window,
+                        tc.system_prompt.as_deref().unwrap_or(""),
                         tc.filters.as_ref(),
                         &pb_trans,
                     )
