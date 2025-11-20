@@ -12,6 +12,23 @@ pub struct TranslatedSegment {
     pub translated: String,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct BatchItem {
+    id: usize,
+    text: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct BatchTranslationResponse {
+    id: usize,
+    translated_text: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct FilterResponse {
+    remove_ids: Vec<usize>,
+}
+
 pub async fn process_translation(
     segments: Vec<TranscriptSegment>,
     app_config: &AppConfig,
@@ -35,30 +52,29 @@ pub async fn process_translation(
     let mut translated_segments = Vec::new();
     let mut summary = String::from("No context yet.");
 
-    for (i, segment) in segments.iter().enumerate() {
-        // 1. Prepare Context
-        let start_idx = i.saturating_sub(window_size);
-        let end_idx = (i + window_size + 1).min(segments.len());
+    // Process in chunks
+    for chunk in segments.chunks(window_size) {
+        // The `segments` vector is sequential.
 
-        let mut context_messages = Vec::new();
-        context_messages.push(format!("Summary of previous conversation: {}", summary));
+        let batch_items: Vec<BatchItem> = chunk
+            .iter()
+            .enumerate()
+            .map(|(i, seg)| {
+                BatchItem {
+                    id: i, // Relative ID within the batch
+                    text: seg.text.clone(),
+                }
+            })
+            .collect();
 
-        for j in start_idx..end_idx {
-            let seg = &segments[j];
-            if i == j {
-                context_messages.push(format!("TARGET SENTENCE TO TRANSLATE: {}", seg.text));
-            } else {
-                context_messages.push(format!("Context: {}", seg.text));
-            }
-        }
+        let batch_json = serde_json::to_string(&batch_items)?;
 
-        let context_block = context_messages.join("\n");
-
-        // 2. Translate
+        // 1. Translate Batch
         let system_prompt = format!(
-            "You are a professional video subtitle translator. Translate the 'TARGET SENTENCE' into {}. \
-            Use the provided summary and context to ensure natural flow and correct tone. \
-            Output ONLY the translated sentence without quotes or explanations.",
+            "You are a professional video subtitle translator. Translate the following JSON list of sentences into {}. \
+            Maintain the JSON structure with the same 'id' for each item. \
+            Use the provided summary to ensure natural flow and correct tone. \
+            Output ONLY the JSON response: [{{ \"id\": 0, \"translated_text\": \"...\" }}, ...]",
             target_lang
         );
 
@@ -69,101 +85,181 @@ pub async fn process_translation(
             },
             Message {
                 role: "user".to_string(),
-                content: context_block.clone(),
+                content: format!(
+                    "Summary of previous conversation: {}\n\nInput JSON:\n{}",
+                    summary, batch_json
+                ),
             },
         ];
 
-        let translated_text = client.chat_completion(model_name, messages).await?;
-        let translated_text = translated_text.trim().to_string();
+        let response_text = client.chat_completion(model_name, messages).await?;
 
-        // 3. Filter
-        let mut keep = true;
+        // Attempt to parse JSON. If it fails, we might need to repair or fallback.
+        // For now, we assume the LLM follows instructions.
+        // We might need to strip markdown code blocks if the LLM adds them.
+        let clean_response = response_text
+            .trim()
+            .trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim();
+
+        let translations: Vec<BatchTranslationResponse> = match serde_json::from_str(clean_response)
+        {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!(
+                    "Failed to parse translation JSON: {}. Response: {}",
+                    e, response_text
+                );
+                // Fallback: return empty translations or original text to avoid crash
+                batch_items
+                    .iter()
+                    .map(|item| BatchTranslationResponse {
+                        id: item.id,
+                        translated_text: item.text.clone(), // Fallback to original
+                    })
+                    .collect()
+            }
+        };
+
+        // Map translations back to segments
+        let mut current_batch_results: Vec<TranslatedSegment> = Vec::new();
+        for (i, segment) in chunk.iter().enumerate() {
+            let translated_text = translations
+                .iter()
+                .find(|t| t.id == i)
+                .map(|t| t.translated_text.clone())
+                .unwrap_or_else(|| segment.text.clone()); // Fallback if ID missing
+
+            current_batch_results.push(TranslatedSegment {
+                start: segment.start,
+                end: segment.end,
+                original: segment.text.clone(),
+                translated: translated_text,
+            });
+        }
+
+        // 2. Filter Batch
         if let Some(filters) = filters {
-            for filter in filters {
-                let filter_llm_str = filter.llm.as_deref().unwrap_or(llm_str);
+            if !filters.is_empty() {
+                // Prepare filter payload
+                let filter_items: Vec<BatchItem> = current_batch_results
+                    .iter()
+                    .enumerate()
+                    .map(|(i, seg)| BatchItem {
+                        id: i,
+                        text: seg.translated.clone(),
+                    })
+                    .collect();
+                let filter_json = serde_json::to_string(&filter_items)?;
+
+                // Construct combined filter prompt
+                let mut filter_conditions = String::new();
+                for (i, filter) in filters.iter().enumerate() {
+                    filter_conditions.push_str(&format!(
+                        "- Condition {}: {} (Threshold: {})\n",
+                        i + 1,
+                        filter.prompt,
+                        filter.threshold.unwrap_or(0.5)
+                    ));
+                }
+
+                let filter_prompt = format!(
+                    "Analyze the following JSON list of texts. Identify items that match **ANY** of the following conditions with a confidence probability higher than the specified threshold:\n\
+                    {}\n\
+                    Return the IDs of items to remove in JSON format: {{ \"remove_ids\": [0, 2, ...] }}. \
+                    Output ONLY the JSON.",
+                    filter_conditions
+                );
+
+                // Use the first filter's provider or default to translation provider
+                // The user didn't specify which provider to use for the combined filter,
+                // but the plan said "use the provider from the first filter or default to translation provider".
+                let filter_llm_str = filters[0].llm.as_deref().unwrap_or(llm_str);
                 let (f_prov_id, f_model) = filter_llm_str
                     .split_once('/')
                     .unwrap_or((filter_llm_str, "default"));
 
                 let f_client = if f_prov_id == provider_id {
-                    // Reuse client if same provider (optimization: could clone or ref, but client creation is cheap)
                     LlmClient::new(provider_config.clone())
                 } else {
-                    let f_conf = app_config
-                        .llm
-                        .providers
-                        .iter()
-                        .find(|p| p.id == f_prov_id)
-                        .ok_or_else(|| {
-                            anyhow::anyhow!("Filter provider {} not found", f_prov_id)
-                        })?;
-                    LlmClient::new(f_conf.clone())
+                    match app_config.llm.providers.iter().find(|p| p.id == f_prov_id) {
+                        Some(conf) => LlmClient::new(conf.clone()),
+                        None => {
+                            eprintln!("Filter provider {} not found, using default", f_prov_id);
+                            LlmClient::new(provider_config.clone())
+                        }
+                    }
                 };
 
-                let filter_prompt = format!(
-                    "Analyze the following sentence: \"{}\"\n\
-                    Condition: {}\n\
-                    Return ONLY a probability score between 0.0 and 1.0 that the sentence meets this condition. \
-                    Do not output anything else.",
-                    translated_text, filter.prompt
-                );
-
-                let score_str = f_client
+                let filter_response_text = f_client
                     .chat_completion(
                         f_model,
                         vec![Message {
                             role: "user".to_string(),
-                            content: filter_prompt,
+                            content: format!("{}\n\nInput JSON:\n{}", filter_prompt, filter_json),
                         }],
                     )
                     .await?;
 
-                // Parse float from response (it might contain text, so use regex or simple parsing)
-                let re = regex::Regex::new(r"0\.\d+|1\.0|0|1").unwrap();
-                let score: f32 = re
-                    .find(&score_str)
-                    .and_then(|m| m.as_str().parse().ok())
-                    .unwrap_or(0.0);
+                let clean_filter_response = filter_response_text
+                    .trim()
+                    .trim_start_matches("```json")
+                    .trim_start_matches("```")
+                    .trim_end_matches("```")
+                    .trim();
 
-                if score > filter.threshold.unwrap_or(0.5) {
-                    keep = false;
-                    break;
+                if let Ok(filter_res) =
+                    serde_json::from_str::<FilterResponse>(clean_filter_response)
+                {
+                    // Remove items
+                    let remove_set: std::collections::HashSet<usize> =
+                        filter_res.remove_ids.into_iter().collect();
+                    let mut filtered_batch = Vec::new();
+                    for (i, item) in current_batch_results.into_iter().enumerate() {
+                        if !remove_set.contains(&i) {
+                            filtered_batch.push(item);
+                        }
+                    }
+                    current_batch_results = filtered_batch;
+                } else {
+                    eprintln!("Failed to parse filter response: {}", filter_response_text);
                 }
             }
         }
 
-        if keep {
-            translated_segments.push(TranslatedSegment {
-                start: segment.start,
-                end: segment.end,
-                original: segment.text.clone(),
-                translated: translated_text.clone(),
-            });
+        // 3. Update Summary (using the last few translated sentences)
+        if !current_batch_results.is_empty() {
+            let recent_text = current_batch_results
+                .iter()
+                .map(|s| s.translated.as_str())
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            let summary_prompt = format!(
+                "Update the summary of the conversation based on the new text.\n\
+                Old Summary: {}\n\
+                New Text: {}\n\
+                Output ONLY the updated summary in one or two sentences.",
+                summary, recent_text
+            );
+
+            summary = client
+                .chat_completion(
+                    model_name,
+                    vec![Message {
+                        role: "user".to_string(),
+                        content: summary_prompt,
+                    }],
+                )
+                .await?
+                .trim()
+                .to_string();
         }
 
-        // 4. Update Summary
-        let summary_prompt = format!(
-            "Update the summary of the conversation based on the new sentence.\n\
-            Old Summary: {}\n\
-            New Sentence: {}\n\
-            Output ONLY the updated summary in one or two sentences.",
-            summary, segment.text
-        );
-
-        // We can use a cheaper model for summary if we want, but let's use the main one for now
-        summary = client
-            .chat_completion(
-                model_name,
-                vec![Message {
-                    role: "user".to_string(),
-                    content: summary_prompt,
-                }],
-            )
-            .await?
-            .trim()
-            .to_string();
-
-        pb.inc(1);
+        translated_segments.extend(current_batch_results);
+        pb.inc(chunk.len() as u64);
     }
 
     Ok(translated_segments)
