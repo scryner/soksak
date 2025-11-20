@@ -1,4 +1,7 @@
-use std::{ffi::c_int, path::Path};
+use std::{
+    ffi::{c_int, c_void},
+    path::Path,
+};
 
 use anyhow::{Result, anyhow};
 
@@ -14,6 +17,20 @@ pub struct TranscriptSegment {
     pub start: i64, // milliseconds
     pub end: i64,   // milliseconds
     pub text: String,
+}
+
+unsafe extern "C" fn whisper_progress_callback(
+    _ctx: *mut c_void,
+    _state: *mut c_void,
+    progress: c_int,
+    user_data: *mut c_void,
+) {
+    if !user_data.is_null() {
+        unsafe {
+            let pb = &*(user_data as *mut indicatif::ProgressBar);
+            pb.set_position(progress as u64);
+        }
+    }
 }
 
 pub struct Whisper {
@@ -44,6 +61,7 @@ impl Whisper {
         &mut self,
         audio: P,
         conf: &WhisperConfig,
+        pb: &mut indicatif::ProgressBar,
     ) -> Result<Vec<TranscriptSegment>> {
         // make parameters
         let mut params = FullParams::new(whisper_rs::SamplingStrategy::BeamSearch {
@@ -62,7 +80,13 @@ impl Whisper {
             None => {}
         }
 
-        // TODO: set parameter progress callback to inform is progress
+        // Set the progress callback to update the provided ProgressBar
+        unsafe {
+            params.set_progress_callback(Some(std::mem::transmute(
+                whisper_progress_callback as *const (),
+            )));
+            params.set_progress_callback_user_data(pb as *mut _ as *mut c_void);
+        }
 
         let audio = ffmpeg_decoder::read_file(audio)?;
 

@@ -70,24 +70,21 @@ async fn main() -> anyhow::Result<()> {
                 None => WhisperConfig::default(),
             };
 
+            let mut pb = indicatif::ProgressBar::new(100);
+            pb.set_style(
+                indicatif::ProgressStyle::default_bar()
+                    .template(
+                        "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}% ({eta})",
+                    )
+                    .unwrap()
+                    .progress_chars("#>-"),
+            );
+
             let segments = whisper
-                .transcribe(&input_path, &whisper_conf)
+                .transcribe(&input_path, &whisper_conf, &mut pb)
                 .context("Failed to transcribe")?;
 
-            // let pb = indicatif::ProgressBar::new(100);
-            // pb.set_style(
-            //     indicatif::ProgressStyle::default_bar()
-            //         .template(
-            //             "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}% ({eta})",
-            //         )
-            //         .unwrap()
-            //         .progress_chars("#>-"),
-            // );
-
-            // let pb_clone = pb.clone();
-            // pb.finish_with_message("Transcription complete");
-
-            println!("Transcription completed");
+            pb.finish_with_message("Transcription complete");
 
             // Save Transcript
             let transcript_path = parent_dir.join(format!("{}.transcript.json", file_stem));
