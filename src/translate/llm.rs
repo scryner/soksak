@@ -1,33 +1,9 @@
 use crate::config::{AppConfig, FilterConfig};
 use crate::llm::{LlmClient, Message};
 use crate::transcribe::TranscriptSegment;
+use crate::translate::{BatchItem, BatchTranslationResponse, FilterResponse, TranslatedSegment};
 use anyhow::Result;
 use indicatif::ProgressBar;
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct TranslatedSegment {
-    pub start: i64,
-    pub end: i64,
-    pub original: String,
-    pub translated: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct BatchItem {
-    id: usize,
-    text: String,
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-struct BatchTranslationResponse {
-    id: usize,
-    translated_text: String,
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-struct FilterResponse {
-    remove_ids: Vec<usize>,
-}
 
 pub async fn process_translation(
     segments: Vec<TranscriptSegment>,

@@ -101,7 +101,7 @@ async fn main() -> anyhow::Result<()> {
                         .unwrap()
                         .progress_chars("#>-"));
 
-                    let translated_segments = translate::process_translation(
+                    let translated_segments = translate::llm::process_translation(
                         segments,
                         &app_config,
                         &tc.llm,
