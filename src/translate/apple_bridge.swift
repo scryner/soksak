@@ -6,6 +6,7 @@ import NaturalLanguage
 @_cdecl("apple_translate")
 public func apple_translate(
     text: UnsafePointer<CChar>,
+    source_lang: UnsafePointer<CChar>,
     target_lang: UnsafePointer<CChar>,
     context: UnsafeMutableRawPointer,
     callback: @convention(c) (UnsafeMutableRawPointer, UnsafePointer<CChar>?, UnsafePointer<CChar>?) -> Void
@@ -14,18 +15,25 @@ public func apple_translate(
     let targetLangStr = String(cString: target_lang)
     let target = Locale.Language(identifier: targetLangStr)
 
-    // Detect language
-    let recognizer = NLLanguageRecognizer()
-    recognizer.processString(textStr)
-    guard let detectedLang = recognizer.dominantLanguage else {
-        let errorStr = "Could not detect source language"
-        errorStr.withCString { ptr in
-            callback(context, nil, ptr)
-        }
-        return
-    }
+    let source: Locale.Language
     
-    let source = Locale.Language(identifier: detectedLang.rawValue)
+    if source_lang == nil {
+        // Detect language
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(textStr)
+        guard let detectedLang = recognizer.dominantLanguage else {
+            let errorStr = "Could not detect source language"
+            errorStr.withCString { ptr in
+                callback(context, nil, ptr)
+            }
+            return
+        }
+        source = Locale.Language(identifier: detectedLang.rawValue)
+
+    } else {
+        let sourceLangStr = String(cString: source_lang)
+        source = Locale.Language(identifier: sourceLangStr)
+    }
 
     Task {
         do {
@@ -39,8 +47,13 @@ public func apple_translate(
                 callback(context, ptr, nil)
             }
         } catch {
-            let errorStr = error.localizedDescription
-            // Check for notInstalled error and provide helpful message
+            var errorStr = error.localizedDescription
+            
+            let errorDesc = String(describing: error)
+            if errorDesc.contains("notInstalled") {
+                errorStr = "Language model not installed. Please download it in System Settings > General > Language & Region > Translation Languages."
+            }
+            
             errorStr.withCString { ptr in
                 callback(context, nil, ptr)
             }

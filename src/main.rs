@@ -7,12 +7,12 @@ mod translate;
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use config::Language;
+use indicatif::{ProgressBar, ProgressStyle};
+use std::io::Write;
+use std::path::{Path, PathBuf};
 
-use crate::{
-    config::{Language, WhisperConfig},
-    transcribe::Whisper,
-};
+use crate::{config::WhisperConfig, transcribe::Whisper};
 
 #[derive(Parser)]
 #[command(name = "soksak")]
@@ -32,6 +32,20 @@ enum Commands {
         /// Configuration file for run options
         #[arg(short, long)]
         conf: Option<PathBuf>,
+
+        /// Input language (default: auto)
+        #[arg(short, long, default_value = "auto")]
+        lang: Language,
+    },
+
+    // Run translation
+    Translate {
+        /// Input video file: MUST BE json from 'Run' command
+        input: PathBuf,
+
+        /// Configuration file for run options
+        #[arg(short, long)]
+        conf: PathBuf,
 
         /// Input language (default: auto)
         #[arg(short, long, default_value = "auto")]
@@ -59,7 +73,7 @@ async fn main() -> anyhow::Result<()> {
 
             // 2. Transcribe
             println!("Transcribing...");
-            let mut whisper = Whisper::new(&app_config.transcription, lang)
+            let mut whisper = Whisper::new(&app_config.transcription, lang.clone())
                 .context("Failed to create Whisper instance")?;
 
             let whisper_conf = match &run_config {
@@ -102,6 +116,7 @@ async fn main() -> anyhow::Result<()> {
                         .progress_chars("#>-"));
 
                     let translated_segments = translate::process_translation(
+                        &lang,
                         &tc.translate,
                         tc.edit.as_ref(),
                         segments,
@@ -123,6 +138,77 @@ async fn main() -> anyhow::Result<()> {
                     println!("Saved SRT to {:?}", srt_path);
                 }
             }
+        }
+        Commands::Translate { input, conf, lang } => {
+            println!("Translating from transcript: {:?}", input);
+
+            // 1. Load App Config
+            let app_config = config::load_app_config()?;
+
+            // 2. Load Run Config (Required)
+            let run_config = config::load_run_config(&conf)?;
+            let tc = run_config.translation.ok_or_else(|| {
+                anyhow::anyhow!("Translation config is required for translate command")
+            })?;
+
+            // 3. Load Transcript
+            let transcript_content = std::fs::read_to_string(&input)?;
+            let segments: Vec<transcribe::TranscriptSegment> =
+                serde_json::from_str(&transcript_content)?;
+
+            if segments.is_empty() {
+                anyhow::bail!("Transcript is empty");
+            }
+
+            // 4. Translate
+            println!("Translating...");
+            let pb_trans = ProgressBar::new(segments.len() as u64);
+            pb_trans.set_style(
+                ProgressStyle::default_bar()
+                    .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
+                    .unwrap()
+                    .progress_chars("#>-"),
+            );
+
+            let translated_segments = translate::process_translation(
+                &lang,
+                &tc.translate,
+                tc.edit.as_ref(),
+                segments,
+                &app_config,
+                &pb_trans,
+            )
+            .await?;
+            pb_trans.finish_with_message("Translation complete");
+
+            // 5. Save Outputs
+            let input_path = Path::new(&input);
+            let file_stem = input_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("output");
+            let parent = input_path.parent().unwrap_or_else(|| Path::new("."));
+
+            // Save JSON
+            let output_json_path = parent.join(format!("{}.translation.json", file_stem));
+            let json_file = std::fs::File::create(&output_json_path)?;
+            serde_json::to_writer_pretty(json_file, &translated_segments)?;
+            println!("Saved translation to {:?}", output_json_path);
+
+            // Save SRT
+            let output_srt_path = parent.join(format!("{}.srt", file_stem));
+            let mut srt_file = std::fs::File::create(&output_srt_path)?;
+            for (i, segment) in translated_segments.iter().enumerate() {
+                writeln!(
+                    srt_file,
+                    "{}\n{} --> {}\n{}\n",
+                    i + 1,
+                    output::format_timestamp(segment.start),
+                    output::format_timestamp(segment.end),
+                    segment.translated
+                )?;
+            }
+            println!("Saved SRT to {:?}", output_srt_path);
         }
     }
 

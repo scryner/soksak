@@ -12,7 +12,7 @@ use crate::{
     ffmpeg_decoder,
 };
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TranscriptSegment {
     pub start: i64, // milliseconds
     pub end: i64,   // milliseconds

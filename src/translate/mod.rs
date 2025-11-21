@@ -1,7 +1,7 @@
 pub mod apple;
 pub mod llm;
 
-use crate::config::{AppConfig, Edit, FilterConfig, Translate, TranslateEngine};
+use crate::config::{AppConfig, Edit, FilterConfig, Language, Translate, TranslateEngine};
 use crate::llm::{LlmClient, Message};
 use crate::transcribe::TranscriptSegment;
 use anyhow::Result;
@@ -33,6 +33,7 @@ pub struct FilterResponse {
 }
 
 pub async fn process_translation(
+    source_lang: &Language,
     translate_config: &Translate,
     edit_config: Option<&Edit>,
     segments: Vec<TranscriptSegment>,
@@ -103,8 +104,17 @@ pub async fn process_translation(
                 }
             }
             TranslateEngine::Apple { .. } => {
-                apple::translate_batch(&batch_items, &translate_config.target_lang.to_string())
-                    .await?
+                let source_lang = match source_lang {
+                    Language::Auto => None,
+                    _ => Some(source_lang.to_string()),
+                };
+
+                apple::translate_batch(
+                    &batch_items,
+                    source_lang.as_deref(),
+                    &translate_config.target_lang.to_string(),
+                )
+                .await?
             }
         };
 
@@ -198,6 +208,7 @@ async fn edit_batch(
     let system_prompt = format!(
         "You are a professional editor. Refine the following translated sentences based on these instructions:\n\
         {}\n\
+        DO NOT TRANSLATE THE TEXT. JUST EDIT THE TEXT BASED ON THE INSTRUCTIONS.\n\
         Maintain the JSON structure with the same 'id' for each item.\n\
         Output ONLY the JSON response: [{{ \"id\": 0, \"translated_text\": \"...\" }}, ...]",
         instructions_str

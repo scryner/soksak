@@ -8,6 +8,7 @@ use tokio::sync::oneshot;
 unsafe extern "C" {
     fn apple_translate(
         text: *const c_char,
+        source_lang: *const c_char,
         target_lang: *const c_char,
         context: *mut c_void,
         callback: extern "C" fn(*mut c_void, *const c_char, *const c_char),
@@ -37,16 +38,32 @@ extern "C" fn translate_callback(
     }
 }
 
-pub async fn translate(text: &str, target_lang: &str) -> Result<String, String> {
+pub async fn translate(
+    text: &str,
+    source_lang: Option<&str>,
+    target_lang: &str,
+) -> Result<String, String> {
     let text_c = CString::new(text).map_err(|e| e.to_string())?;
     let target_lang_c = CString::new(target_lang).map_err(|e| e.to_string())?;
 
     let (tx, rx) = oneshot::channel::<Result<String, String>>();
     let tx_ptr = Box::into_raw(Box::new(tx));
 
+    // Bind CString to a variable so it lives long enough for the FFI call
+    let source_lang_c = match source_lang {
+        Some(lang) => Some(CString::new(lang).map_err(|e| e.to_string())?),
+        None => None,
+    };
+
     unsafe {
+        let source_lang_ptr = match &source_lang_c {
+            Some(c_str) => c_str.as_ptr(),
+            None => std::ptr::null(),
+        };
+
         apple_translate(
             text_c.as_ptr(),
+            source_lang_ptr,
             target_lang_c.as_ptr(),
             tx_ptr as *mut c_void,
             translate_callback,
@@ -61,15 +78,20 @@ pub async fn translate(text: &str, target_lang: &str) -> Result<String, String> 
 
 pub async fn translate_batch(
     batch_items: &[BatchItem],
+    source_lang: Option<&str>,
     target_lang: &str,
 ) -> Result<Vec<BatchTranslationResponse>> {
     let mut results = Vec::new();
 
     for item in batch_items {
+        print!("{} / {}", source_lang.unwrap_or("auto"), &item.text);
+
         // Map String error to anyhow::Error
-        let translated_text = translate(&item.text, target_lang)
+        let translated_text = translate(&item.text, source_lang, target_lang)
             .await
             .map_err(|e| anyhow::anyhow!(e))?;
+
+        println!(" -> {} / {}", translated_text, target_lang);
 
         results.push(BatchTranslationResponse {
             id: item.id,
@@ -89,7 +111,7 @@ mod tests {
     async fn test_apple_translate() {
         let text = "Hello, world!";
         let target = "ko";
-        match translate(text, target).await {
+        match translate(text, None, target).await {
             Ok(translated) => {
                 println!("Translated: {}", translated);
                 assert!(!translated.is_empty());
