@@ -1,20 +1,22 @@
 # soksak
 
 ## Overview
-`soksak` is a command‑line tool for video transcription and optional translation.  
-It uses Whisper for speech‑to‑text, supports configurable language detection, and can translate the resulting transcript using a large language model (LLM). The tool also provides progress bars for both transcription and translation steps.
+`soksak` is a command-line tool for video/audio transcription and translation.  
+It uses Whisper for speech-to-text and supports translation via LLM or Apple's Translation framework. The tool provides progress bars for both transcription and translation steps.
 
 ## Features
-- **Transcription** using Whisper with automatic or user‑specified language detection.  
-- **Optional translation** of the transcript into a target language via an LLM.  
-- Configurable via application‑wide (`app_config`) and run‑specific configuration files.  
-- Generates output in JSON (transcript, translation) and SRT subtitle formats.  
-- Progress indication with `indicatif` progress bars.
+- **Transcription** using Whisper with automatic or user-specified language detection
+- **Translation** using either LLM (OpenAI, Ollama, Claude, Gemini) or Apple's Translation framework
+- **Post-processing** with customizable editing instructions and filtering
+- **Two workflows**: Full pipeline (transcribe + translate) or translate-only from existing transcript
+- Configurable via application-wide and run-specific YAML configuration files
+- Generates output in JSON (transcript, translation) and SRT subtitle formats
+- Progress indication with `indicatif` progress bars
 
 ## Installation
 ```sh
 # Clone the repository
-git clone https://github.com/yourusername/soksak.git
+git clone https://github.com/scryner/soksak.git
 cd soksak
 
 # Build the project (requires Rust and Cargo)
@@ -22,49 +24,162 @@ cargo build --release
 ```
 
 ## Usage
+
+### Run Command (Transcribe + Translate)
+Transcribes a video/audio file and optionally translates the result.
+
 ```sh
-# Basic transcription (auto language detection)
-./target/release/soksak run -i <input_video_file>
+# Basic transcription only (auto language detection)
+soksak run <input_video_file>
 
 # Transcription with explicit language
-./target/release/soksak run -i <input_video_file> --lang en
+soksak run <input_video_file> --lang ja
 
-# Transcription with a custom run configuration (including translation)
-./target/release/soksak run -i <input_video_file> --conf <run_config.toml>
+# Transcription with translation (requires config file)
+soksak run <input_video_file> --conf <config.yaml>
+
+# Transcription with translation and specific language
+soksak run <input_video_file> --conf <config.yaml> --lang ko
 ```
 
-### Command‑line arguments
+### Translate Command (Translation Only)
+Translates an existing `.transcript.json` file without re-transcribing.
+
+```sh
+# Translate from existing transcript
+soksak translate <input.transcript.json> --conf <config.yaml>
+
+# Translate with specific source language
+soksak translate <input.transcript.json> --conf <config.yaml> --lang ja
+```
+
+### Command-line Arguments
+
+#### `run` subcommand
 | Argument | Description |
 |----------|-------------|
-| `input`  | Path to the input video file (required). |
-| `--conf, -c` | Optional path to a run‑specific configuration file (TOML). |
-| `--lang, -l` | Input language (`auto` by default). Supported values are defined in `config::Language`. |
+| `input`  | Path to the input video/audio file (required) |
+| `--conf, -c` | Optional path to a run-specific configuration file (YAML) |
+| `--lang, -l` | Input language (default: `auto`). Use ISO 639-1 codes (e.g., `en`, `ja`, `ko`) |
+
+#### `translate` subcommand
+| Argument | Description |
+|----------|-------------|
+| `input`  | Path to the `.transcript.json` file (required) |
+| `--conf, -c` | Path to a run-specific configuration file (YAML, required) |
+| `--lang, -l` | Source language (default: `auto`). Use ISO 639-1 codes |
 
 ## Configuration
 
-### Application configuration (`app_config`)
-Located at the default config path (e.g., `~/.config/soksak/config.toml`). It contains global settings such as Whisper model parameters and default LLM credentials.
+### Application Configuration
+Located at `~/.soksak/config.yaml`. Contains global settings for Whisper models and LLM providers.
 
-### Run configuration (`run_config.toml`)
-A TOML file that can override Whisper settings and specify translation options:
+**Example:**
+```yaml
+transcription:
+  models:
+    auto: "/path/to/whisper/model/ggml-large-v3.bin"
+    en: "/path/to/whisper/model/ggml-base.en.bin"
+    ja: "/path/to/whisper/model/ggml-large-v3.bin"
+    ko: "/path/to/whisper/model/ggml-large-v3.bin"
 
-```toml
-[whisper]
-# Whisper specific overrides (optional)
-
-[translation]
-llm = "openai"
-target_lang = "en"
-window = 10
-filters = ["punctuation", "capitalization"]
+llm:
+  providers:
+    - id: "openai"
+      api_type: "OpenAI"
+      api_key: "sk-..."
+      base_url: "https://api.openai.com/v1"
+    
+    - id: "ollama"
+      api_type: "Ollama"
+      base_url: "http://localhost:11434"
+    
+    - id: "claude"
+      api_type: "Claude"
+      api_key: "sk-ant-..."
+      base_url: "https://api.anthropic.com"
 ```
 
-## Output Files
-After execution, the following files are generated in the same directory as the input video:
+### Run Configuration
+A YAML file that specifies Whisper overrides and translation settings.
 
-- `<filename>.transcript.json` – Raw transcription segments.  
-- `<filename>.translation.json` – Translated segments (if translation is configured).  
-- `<filename>.srt` – Subtitles in SRT format (if translation is configured).
+**Example with LLM translation:**
+```yaml
+whisper:
+  beam_size: 5
+  patience: 1.0
+  initial_prompt: "This is a technical presentation."
+
+translation:
+  translate:
+    engine:
+      type: "LLM"
+      model: "openai/gpt-4"
+      system_prompt: "Translate naturally and preserve technical terms."
+      window: 100
+    target_lang: "en"
+  
+  edit:
+    default_model: "openai/gpt-4"
+    instructions:
+      - "Fix grammar and punctuation"
+      - "Use formal tone"
+    filters:
+      - prompt: "Is this segment advertising or promotional content?"
+        threshold: 0.7
+        llm: "openai/gpt-4"
+```
+
+**Example with Apple Translation:**
+```yaml
+translation:
+  translate:
+    engine:
+      type: "Apple"
+      window: 100
+    target_lang: "ko"
+  
+  edit:
+    default_model: "openai/gpt-4"
+    instructions:
+      - "Improve readability"
+```
+
+### Configuration Fields
+
+#### `whisper` (optional)
+- `beam_size`: Beam search size (optional)
+- `patience`: Patience parameter for beam search (optional)
+- `initial_prompt`: Initial prompt to guide transcription (optional)
+
+#### `translation.translate`
+- `engine`: Translation engine configuration
+  - **LLM engine:**
+    - `type`: `"LLM"`
+    - `model`: Provider and model (format: `"{provider_id}/{model}"`)
+    - `system_prompt`: Custom system prompt for translation (optional)
+    - `window`: Batch size for translation (default: 100)
+  - **Apple engine:**
+    - `type`: `"Apple"`
+    - `window`: Batch size for translation (default: 100)
+- `target_lang`: Target language code (ISO 639-1)
+
+#### `translation.edit` (optional)
+Post-processing configuration for translated text.
+
+- `default_model`: Default LLM for editing (format: `"{provider_id}/{model}"`)
+- `instructions`: List of editing instructions (optional)
+- `filters`: List of filter configurations (optional)
+  - `prompt`: Question to ask the LLM about each segment
+  - `threshold`: Confidence threshold for filtering (optional)
+  - `llm`: Specific LLM for this filter (optional, uses `default_model` if not specified)
+
+## Output Files
+After execution, the following files are generated in the same directory as the input:
+
+- `<filename>.transcript.json` – Raw transcription segments with timestamps
+- `<filename>.translation.json` – Translated segments (if translation is configured)
+- `<filename>.srt` – Subtitles in SRT format (if translation is configured)
 
 ## License
 This project is licensed under the MIT License. See `LICENSE` for details.
