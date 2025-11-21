@@ -22,3 +22,6 @@ dirs = "5.0"
 hound = "3.5"                                             # For reading WAV files
 uuid = { version = "1.0", features = ["v4"] }
 audrey = "0.3.0"
+
+[build-dependencies]
+cc = "1.0"
