@@ -84,14 +84,10 @@ pub async fn translate_batch(
     let mut results = Vec::new();
 
     for item in batch_items {
-        print!("{} / {}", source_lang.unwrap_or("auto"), &item.text);
-
         // Map String error to anyhow::Error
         let translated_text = translate(&item.text, source_lang, target_lang)
             .await
             .map_err(|e| anyhow::anyhow!(e))?;
-
-        println!(" -> {} / {}", translated_text, target_lang);
 
         results.push(BatchTranslationResponse {
             id: item.id,
