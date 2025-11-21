@@ -1,3 +1,4 @@
+pub mod apple;
 pub mod llm;
 
 #[derive(Debug, Clone, serde::Serialize)]
