@@ -1,3 +1,5 @@
+use crate::translate::{BatchItem, BatchTranslationResponse};
+use anyhow::Result;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_void};
 use tokio::sync::oneshot;
@@ -55,6 +57,27 @@ pub async fn translate(text: &str, target_lang: &str) -> Result<String, String> 
         Ok(result) => result,
         Err(_) => Err("Translation task cancelled or panicked".to_string()),
     }
+}
+
+pub async fn translate_batch(
+    batch_items: &[BatchItem],
+    target_lang: &str,
+) -> Result<Vec<BatchTranslationResponse>> {
+    let mut results = Vec::new();
+
+    for item in batch_items {
+        // Map String error to anyhow::Error
+        let translated_text = translate(&item.text, target_lang)
+            .await
+            .map_err(|e| anyhow::anyhow!(e))?;
+
+        results.push(BatchTranslationResponse {
+            id: item.id,
+            translated_text,
+        });
+    }
+
+    Ok(results)
 }
 
 #[cfg(test)]

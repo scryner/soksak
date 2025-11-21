@@ -41,16 +41,8 @@ public func apple_translate(
         } catch {
             let errorStr = error.localizedDescription
             // Check for notInstalled error and provide helpful message
-            if let translationError = error as? Translation.TranslationError, 
-               translationError.cause == .notInstalled {
-                 let msg = "Language model not installed. Please download it in System Settings > General > Language & Region > Translation Languages."
-                 msg.withCString { ptr in
-                     callback(context, nil, ptr)
-                 }
-            } else {
-                errorStr.withCString { ptr in
-                    callback(context, nil, ptr)
-                }
+            errorStr.withCString { ptr in
+                callback(context, nil, ptr)
             }
         }
     }

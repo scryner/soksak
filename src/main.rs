@@ -101,7 +101,14 @@ async fn main() -> anyhow::Result<()> {
                         .unwrap()
                         .progress_chars("#>-"));
 
-                    let translated_segments = translate::llm::process_translation(
+                    let engine = if tc.llm.to_lowercase() == "apple" {
+                        translate::TranslateEngine::Apple
+                    } else {
+                        translate::TranslateEngine::LLM
+                    };
+
+                    let translated_segments = translate::process_translation(
+                        engine,
                         segments,
                         &app_config,
                         &tc.llm,
