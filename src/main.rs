@@ -101,21 +101,11 @@ async fn main() -> anyhow::Result<()> {
                         .unwrap()
                         .progress_chars("#>-"));
 
-                    let engine = if tc.llm.to_lowercase() == "apple" {
-                        translate::TranslateEngine::Apple
-                    } else {
-                        translate::TranslateEngine::LLM
-                    };
-
                     let translated_segments = translate::process_translation(
-                        engine,
+                        &tc.translate,
+                        tc.edit.as_ref(),
                         segments,
                         &app_config,
-                        &tc.llm,
-                        &tc.target_lang,
-                        tc.window,
-                        tc.system_prompt.as_deref().unwrap_or(""),
-                        tc.filters.as_ref(),
                         &pb_trans,
                     )
                     .await?;

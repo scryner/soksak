@@ -214,6 +214,12 @@ impl Language {
     }
 }
 
+impl std::fmt::Display for Language {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 impl Serialize for Language {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -386,20 +392,43 @@ pub struct WhisperConfig {
     pub initial_prompt: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct TranslationConfig {
-    pub llm: String, // "{provider_id}/{model}"
-    pub target_lang: String,
-    pub window: usize,
-    pub system_prompt: Option<String>,
+#[derive(Debug, Deserialize, Clone)]
+#[serde(tag = "type")]
+pub enum TranslateEngine {
+    LLM {
+        model: String, // {provider_id}/{model}
+        system_prompt: Option<String>,
+        window: Option<usize>, // default size: 100
+    },
+    Apple {
+        window: Option<usize>, // default size: 100
+    },
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Translate {
+    pub engine: TranslateEngine,
+    pub target_lang: Language,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Edit {
+    pub default_model: String, // {provider_id}/{model}
+    pub instructions: Option<Vec<String>>,
     pub filters: Option<Vec<FilterConfig>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
+pub struct TranslationConfig {
+    pub translate: Translate,
+    pub edit: Option<Edit>, // Made optional as it might not always be present
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct FilterConfig {
     pub prompt: String,
-    pub llm: Option<String>,
     pub threshold: Option<f32>,
+    pub llm: Option<String>, // Optional specific LLM for this filter
 }
 
 pub fn load_app_config() -> anyhow::Result<AppConfig> {
