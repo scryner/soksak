@@ -28,6 +28,11 @@ pub struct BatchTranslationResponse {
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
+pub struct BatchTranslationResponseWrapper {
+    pub items: Vec<BatchTranslationResponse>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct FilterResponse {
     pub remove_ids: Vec<usize>,
 }
@@ -210,7 +215,7 @@ async fn edit_batch(
         {}\n\
         DO NOT TRANSLATE THE TEXT. JUST EDIT THE TEXT BASED ON THE INSTRUCTIONS.\n\
         Maintain the JSON structure with the same 'id' for each item.\n\
-        Output ONLY the JSON response: [{{ \"id\": 0, \"translated_text\": \"...\" }}, ...]",
+        Output ONLY the JSON response: {{ \"items\": [{{ \"id\": 0, \"translated_text\": \"...\" }}, ...] }}",
         instructions_str
     );
 
@@ -225,7 +230,29 @@ async fn edit_batch(
         },
     ];
 
-    let response_text = client.chat_completion(model_name, messages).await?;
+    let schema = serde_json::json!({
+        "type": "object",
+        "properties": {
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": { "type": "integer" },
+                        "translated_text": { "type": "string" }
+                    },
+                    "required": ["id", "translated_text"],
+                    "additionalProperties": false
+                }
+            }
+        },
+        "required": ["items"],
+        "additionalProperties": false
+    });
+
+    let response_text = client
+        .chat_completion(model_name, messages, true, Some(schema))
+        .await?;
 
     let clean_response = response_text
         .trim()
@@ -234,16 +261,23 @@ async fn edit_batch(
         .trim_end_matches("```")
         .trim();
 
-    let refined_items: Vec<BatchTranslationResponse> = match serde_json::from_str(clean_response) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!(
-                "Failed to parse edit JSON: {}. Response: {}",
-                e, response_text
-            );
-            return Ok(batch); // Fallback to unedited
-        }
-    };
+    let refined_items: Vec<BatchTranslationResponse> =
+        match serde_json::from_str::<BatchTranslationResponseWrapper>(clean_response) {
+            Ok(wrapper) => wrapper.items,
+            Err(_) => {
+                // Fallback
+                match serde_json::from_str::<Vec<BatchTranslationResponse>>(clean_response) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        eprintln!(
+                            "Failed to parse edit JSON: {}. Response: {}",
+                            e, response_text
+                        );
+                        return Ok(batch); // Fallback to unedited
+                    }
+                }
+            }
+        };
 
     // Map back
     let mut refined_batch = Vec::new();
@@ -322,6 +356,18 @@ async fn filter_batch(
         LlmClient::new(def_conf.clone())
     };
 
+    let schema = serde_json::json!({
+        "type": "object",
+        "properties": {
+            "remove_ids": {
+                "type": "array",
+                "items": { "type": "integer" }
+            }
+        },
+        "required": ["remove_ids"],
+        "additionalProperties": false
+    });
+
     let filter_response_text = f_client
         .chat_completion(
             f_model,
@@ -329,6 +375,8 @@ async fn filter_batch(
                 role: "user".to_string(),
                 content: format!("{}\n\nInput JSON:\n{}", filter_prompt, filter_json),
             }],
+            true,
+            Some(schema),
         )
         .await?;
 

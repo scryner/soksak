@@ -371,12 +371,22 @@ pub enum ApiType {
     Gemini,
 }
 
+#[derive(Debug, Deserialize, Clone, Default)]
+pub enum JsonModeType {
+    #[default]
+    JsonObject,
+    JsonSchema,
+    None,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct LlmProviderConfig {
     pub id: String,
     pub base_url: Option<String>,
     pub api_key: Option<String>,
     pub api_type: ApiType,
+    #[serde(default)]
+    pub json_mode_type: JsonModeType,
 }
 
 #[derive(Debug, Deserialize)]

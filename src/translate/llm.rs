@@ -2,6 +2,11 @@ use crate::llm::{LlmClient, Message};
 use crate::translate::{BatchItem, BatchTranslationResponse, TranslatedSegment};
 use anyhow::Result;
 
+#[derive(serde::Deserialize)]
+struct BatchTranslationResponseWrapper {
+    items: Vec<BatchTranslationResponse>,
+}
+
 pub async fn translate_batch(
     client: &LlmClient,
     model_name: &str,
@@ -16,7 +21,7 @@ pub async fn translate_batch(
         "{}You are a professional video subtitle translator. Translate the following JSON list of sentences into {}. \
         Maintain the JSON structure with the same 'id' for each item. \
         Use the provided summary to ensure natural flow and correct tone. \
-        Output ONLY the JSON response: [{{ \"id\": 0, \"translated_text\": \"...\" }}, ...]",
+        Output ONLY the JSON response: {{ \"items\": [{{ \"id\": 0, \"translated_text\": \"...\" }}, ...] }}",
         prepending_system_prompt, target_lang
     );
 
@@ -34,7 +39,29 @@ pub async fn translate_batch(
         },
     ];
 
-    let response_text = client.chat_completion(model_name, messages).await?;
+    let schema = serde_json::json!({
+        "type": "object",
+        "properties": {
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": { "type": "integer" },
+                        "translated_text": { "type": "string" }
+                    },
+                    "required": ["id", "translated_text"],
+                    "additionalProperties": false
+                }
+            }
+        },
+        "required": ["items"],
+        "additionalProperties": false
+    });
+
+    let response_text = client
+        .chat_completion(model_name, messages, true, Some(schema))
+        .await?;
 
     let clean_response = response_text
         .trim()
@@ -43,21 +70,28 @@ pub async fn translate_batch(
         .trim_end_matches("```")
         .trim();
 
-    match serde_json::from_str::<Vec<BatchTranslationResponse>>(clean_response) {
-        Ok(t) => Ok(t),
-        Err(e) => {
-            eprintln!(
-                "Failed to parse translation JSON: {}. Response: {}",
-                e, response_text
-            );
-            // Fallback: return original text
-            Ok(batch_items
-                .iter()
-                .map(|item| BatchTranslationResponse {
-                    id: item.id,
-                    translated_text: item.text.clone(),
-                })
-                .collect())
+    // Try parsing as wrapper first
+    match serde_json::from_str::<BatchTranslationResponseWrapper>(clean_response) {
+        Ok(wrapper) => Ok(wrapper.items),
+        Err(_) => {
+            // Fallback: try parsing as list directly (for providers that might ignore schema or old behavior)
+            match serde_json::from_str::<Vec<BatchTranslationResponse>>(clean_response) {
+                Ok(t) => Ok(t),
+                Err(e) => {
+                    eprintln!(
+                        "Failed to parse translation JSON: {}. Response: {}",
+                        e, response_text
+                    );
+                    // Fallback: return original text
+                    Ok(batch_items
+                        .iter()
+                        .map(|item| BatchTranslationResponse {
+                            id: item.id,
+                            translated_text: item.text.clone(),
+                        })
+                        .collect())
+                }
+            }
         }
     }
 }
@@ -89,6 +123,8 @@ pub async fn update_summary(
                 role: "user".to_string(),
                 content: summary_prompt,
             }],
+            false,
+            None,
         )
         .await?
         .trim()
