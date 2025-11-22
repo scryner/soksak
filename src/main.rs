@@ -183,10 +183,16 @@ async fn main() -> anyhow::Result<()> {
 
             // 5. Save Outputs
             let input_path = Path::new(&input);
-            let file_stem = input_path
+            let raw_stem = input_path
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("output");
+
+            let file_stem = if raw_stem.ends_with(".transcript") {
+                raw_stem.trim_end_matches(".transcript")
+            } else {
+                raw_stem
+            };
             let parent = input_path.parent().unwrap_or_else(|| Path::new("."));
 
             // Save JSON

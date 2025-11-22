@@ -35,7 +35,8 @@ pub fn save_srt(path: &Path, segments: &[TranslatedSegment]) -> Result<()> {
     Ok(())
 }
 
-pub fn format_timestamp(ms: i64) -> String {
+pub fn format_timestamp(cs: i64) -> String {
+    let ms = cs * 10;
     let hours = ms / 3600000;
     let minutes = (ms % 3600000) / 60000;
     let seconds = (ms % 60000) / 1000;
