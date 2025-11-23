@@ -250,6 +250,9 @@ async fn edit_batch(
         "additionalProperties": false
     });
 
+    let curl_cmd = client.get_curl_command(model_name, &messages, true, Some(&schema));
+    log::debug!("CURL: {}", curl_cmd);
+
     let response_text = client
         .chat_completion(model_name, messages, true, Some(schema))
         .await?;

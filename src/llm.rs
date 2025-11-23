@@ -39,6 +39,181 @@ impl LlmClient {
         }
     }
 
+    pub fn get_curl_command(
+        &self,
+        model: &str,
+        messages: &[Message],
+        json_mode: bool,
+        response_schema: Option<&serde_json::Value>,
+    ) -> String {
+        match self.provider.api_type {
+            crate::config::ApiType::OpenAI | crate::config::ApiType::Ollama => {
+                self.get_curl_openai(model, messages, json_mode, response_schema)
+            }
+            crate::config::ApiType::Claude => {
+                self.get_curl_claude(model, messages, json_mode, response_schema)
+            }
+            crate::config::ApiType::Gemini => {
+                self.get_curl_gemini(model, messages, json_mode, response_schema)
+            }
+        }
+    }
+
+    fn get_curl_openai(
+        &self,
+        model: &str,
+        messages: &[Message],
+        json_mode: bool,
+        response_schema: Option<&serde_json::Value>,
+    ) -> String {
+        let default_url = if matches!(self.provider.api_type, crate::config::ApiType::Ollama) {
+            "http://localhost:11434/v1/chat/completions"
+        } else {
+            "https://api.openai.com/v1/chat/completions"
+        };
+
+        let url = if let Some(base_url) = &self.provider.base_url {
+            format!("{}/v1/chat/completions", base_url.trim_end_matches('/'))
+        } else {
+            default_url.to_string()
+        };
+
+        let mut body = json!({
+            "model": model,
+            "messages": messages,
+        });
+
+        if json_mode {
+            match self.provider.json_mode_type {
+                crate::config::JsonModeType::JsonObject => {
+                    if matches!(self.provider.api_type, crate::config::ApiType::Ollama) {
+                        body.as_object_mut()
+                            .unwrap()
+                            .insert("format".to_string(), json!("json"));
+                    } else {
+                        body.as_object_mut().unwrap().insert(
+                            "response_format".to_string(),
+                            json!({ "type": "json_object" }),
+                        );
+                    }
+                }
+                crate::config::JsonModeType::JsonSchema => {
+                    if let Some(schema) = response_schema {
+                        body.as_object_mut().unwrap().insert(
+                            "response_format".to_string(),
+                            json!({
+                                "type": "json_schema",
+                                "json_schema": {
+                                    "name": "response",
+                                    "strict": true,
+                                    "schema": schema
+                                }
+                            }),
+                        );
+                    } else {
+                        body.as_object_mut().unwrap().insert(
+                            "response_format".to_string(),
+                            json!({ "type": "json_object" }),
+                        );
+                    }
+                }
+                crate::config::JsonModeType::None => {}
+            }
+        }
+
+        let mut cmd = format!("curl -X POST \"{}\"", url);
+        cmd.push_str(" \\\n  -H \"Content-Type: application/json\"");
+        if let Some(api_key) = &self.provider.api_key {
+            cmd.push_str(&format!(" \\\n  -H \"Authorization: Bearer {}\"", api_key));
+        }
+        cmd.push_str(&format!(" \\\n  -d '{}'", body.to_string()));
+        cmd
+    }
+
+    fn get_curl_claude(
+        &self,
+        model: &str,
+        messages: &[Message],
+        _json_mode: bool,
+        _response_schema: Option<&serde_json::Value>,
+    ) -> String {
+        let url = if let Some(base_url) = &self.provider.base_url {
+            format!("{}/v1/messages", base_url.trim_end_matches('/'))
+        } else {
+            "https://api.anthropic.com/v1/messages".to_string()
+        };
+
+        let body = json!({
+            "model": model,
+            "messages": messages,
+            "max_tokens": 4096,
+        });
+
+        let mut cmd = format!("curl -X POST \"{}\"", url);
+        cmd.push_str(" \\\n  -H \"Content-Type: application/json\"");
+        cmd.push_str(&format!(
+            " \\\n  -H \"x-api-key: {}\"",
+            self.provider.api_key.as_deref().unwrap_or_default()
+        ));
+        cmd.push_str(" \\\n  -H \"anthropic-version: 2023-06-01\"");
+        cmd.push_str(&format!(" \\\n  -d '{}'", body.to_string()));
+        cmd
+    }
+
+    fn get_curl_gemini(
+        &self,
+        model: &str,
+        messages: &[Message],
+        json_mode: bool,
+        _response_schema: Option<&serde_json::Value>,
+    ) -> String {
+        let base_url = self
+            .provider
+            .base_url
+            .as_deref()
+            .unwrap_or("https://generativelanguage.googleapis.com");
+        let api_key = self.provider.api_key.as_deref().unwrap_or("YOUR_API_KEY");
+
+        let url = format!(
+            "{}/v1beta/models/{}:generateContent?key={}",
+            base_url.trim_end_matches('/'),
+            model,
+            api_key
+        );
+
+        let contents: Vec<serde_json::Value> = messages
+            .iter()
+            .map(|msg| {
+                let role = if msg.role == "user" { "user" } else { "model" };
+                json!({
+                    "role": role,
+                    "parts": [{ "text": msg.content }]
+                })
+            })
+            .collect();
+
+        let mut body = json!({
+            "contents": contents,
+        });
+
+        if json_mode {
+            match self.provider.json_mode_type {
+                crate::config::JsonModeType::None => {}
+                _ => {
+                    body.as_object_mut().unwrap().insert(
+                        "generationConfig".to_string(),
+                        json!({ "responseMimeType": "application/json" }),
+                    );
+                }
+            }
+        }
+
+        let mut cmd = format!("curl -X POST \"{}\"", url);
+        cmd.push_str(" \\\n  -H \"Content-Type: application/json\"");
+        cmd.push_str(&format!(" \\\n  -d '{}'", body.to_string()));
+        cmd
+    }
+
     async fn chat_completion_openai(
         &self,
         model: &str,

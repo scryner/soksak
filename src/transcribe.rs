@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::{Result, anyhow};
 
-use whisper_rs::{FullParams, WhisperContext, WhisperContextParameters};
+use whisper_rs::{FullParams, WhisperContext, WhisperContextParameters, WhisperVadParams};
 
 use crate::{
     config::{Language, TranscriptionConfig, WhisperConfig},
@@ -68,6 +68,16 @@ impl Whisper {
             beam_size: conf.beam_size.unwrap_or(DEFAULT_BEAM_SIZE) as c_int,
             patience: conf.patience.unwrap_or(DEFAULT_PATIENCE),
         });
+
+        let mut vod_params = WhisperVadParams::new();
+        vod_params.set_min_speech_duration(150);
+        vod_params.set_min_silence_duration(200);
+        vod_params.set_speech_pad(30);
+        params.set_no_context(true);
+
+        params.set_vad_params(vod_params);
+        params.set_vad_model_path(Some("/Users/scryner/.soksak/models/ggml-silero-v6.2.0.bin"));
+        params.enable_vad(true);
 
         params.set_print_special(false);
         params.set_print_progress(false);

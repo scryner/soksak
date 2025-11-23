@@ -4020,6 +4020,7 @@ dependencies = [
  "hound",
  "iced",
  "indicatif",
+ "log",
  "regex",
  "reqwest",
  "serde",
