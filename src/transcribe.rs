@@ -5,6 +5,8 @@ use std::{
 
 use anyhow::{Result, anyhow};
 
+use std::io::Write;
+use tempfile::NamedTempFile;
 use whisper_rs::{FullParams, WhisperContext, WhisperContextParameters, WhisperVadParams};
 
 use crate::{
@@ -69,15 +71,35 @@ impl Whisper {
             patience: conf.patience.unwrap_or(DEFAULT_PATIENCE),
         });
 
-        let mut vod_params = WhisperVadParams::new();
-        vod_params.set_min_speech_duration(150);
-        vod_params.set_min_silence_duration(200);
-        vod_params.set_speech_pad(30);
-        params.set_no_context(true);
+        // Silero VAD model (MIT License)
+        // Copyright (c) 2021 Silero Team
+        const SILERO_MODEL: &[u8] = include_bytes!("models/silero_vad.bin");
 
-        params.set_vad_params(vod_params);
-        params.set_vad_model_path(Some("/Users/scryner/.soksak/models/ggml-silero-v6.2.0.bin"));
-        params.enable_vad(true);
+        // Keep the temp file alive as long as params is used
+        let _vad_temp_file;
+
+        if conf.vad.unwrap_or(false) {
+            let mut vod_params = WhisperVadParams::new();
+            vod_params.set_min_speech_duration(150);
+            vod_params.set_min_silence_duration(200);
+            vod_params.set_speech_pad(30);
+            params.set_no_context(true);
+
+            params.set_vad_params(vod_params);
+
+            // Write embedded model to a temporary file using tempfile crate
+            let mut temp_file = NamedTempFile::new()?;
+            temp_file.write_all(SILERO_MODEL)?;
+
+            params.set_vad_model_path(Some(
+                temp_file.path().to_str().ok_or(anyhow!("Invalid path"))?,
+            ));
+            params.enable_vad(true);
+
+            _vad_temp_file = Some(temp_file);
+        } else {
+            _vad_temp_file = None;
+        }
 
         params.set_print_special(false);
         params.set_print_progress(false);

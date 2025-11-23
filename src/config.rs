@@ -400,6 +400,7 @@ pub struct WhisperConfig {
     pub beam_size: Option<u32>,
     pub patience: Option<f32>,
     pub initial_prompt: Option<String>,
+    pub vad: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
