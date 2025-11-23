@@ -28,7 +28,7 @@ public func whisperkit_transcribe(
             } else {
                  pipe = try await WhisperKit(model: modelNameStr, download: true)
             }
-            
+
             // Load audio
             // WhisperKit expects [Float] samples or an AVAudioFile.
             // For simplicity, let's assume we can load the file using standard AVFoundation or similar,
