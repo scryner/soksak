@@ -40,15 +40,14 @@ const DEFAULT_PATIENCE: f32 = 1.0;
 impl Whisper {
     pub fn new(conf: &TranscriptionConfig, lang: Language) -> Result<Self> {
         // get model path according to lang
-        let model_path = {
-            conf.models
-                .get(&lang)
-                .ok_or(anyhow!("not supported language {}", lang.as_str()))?
-        };
+        let model_config = conf
+            .models
+            .get(&lang)
+            .ok_or_else(|| anyhow!("Model not configured for language: {:?}", lang))?;
 
         // make whisper context
         let param = WhisperContextParameters::default();
-        let ctx = WhisperContext::new_with_params(model_path, param)?;
+        let ctx = WhisperContext::new_with_params(&model_config.model, param)?;
 
         Ok(Self { ctx, lang })
     }

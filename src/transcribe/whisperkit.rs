@@ -1,3 +1,4 @@
+use crate::ffmpeg_decoder;
 use crate::transcribe::TranscriptSegment;
 use anyhow::{Result, anyhow};
 use std::ffi::{CStr, CString};
@@ -5,15 +6,19 @@ use std::os::raw::{c_char, c_void};
 use std::path::Path;
 use std::sync::mpsc::{Sender, channel};
 
-#[repr(C)]
-struct CallbackContext {
-    sender: *mut c_void, // Pointer to Sender<BridgeMessage>
-}
-
 enum BridgeMessage {
     Segment(TranscriptSegment),
     Error(String),
+    Progress(i32),
     Done,
+}
+
+extern "C" fn whisperkit_progress_callback(progress: f64, context: *mut c_void) {
+    unsafe {
+        let sender_ptr = context as *mut Sender<BridgeMessage>;
+        let sender = &*sender_ptr;
+        let _ = sender.send(BridgeMessage::Progress(progress as i32));
+    }
 }
 
 extern "C" fn whisperkit_callback(
@@ -53,6 +58,7 @@ unsafe extern "C" {
         model_name: *const c_char,
         context: *mut c_void,
         callback: extern "C" fn(*const c_char, *const c_char, f64, f64, *mut c_void),
+        progress_callback: extern "C" fn(f64, *mut c_void),
     );
 }
 
@@ -62,6 +68,7 @@ pub struct WhisperKit {
 }
 
 impl WhisperKit {
+    #[allow(dead_code)]
     pub fn new(model_path: &str) -> Self {
         Self {
             model_path: Some(model_path.to_string()),
@@ -81,8 +88,10 @@ impl WhisperKit {
         audio: P,
         pb: &mut indicatif::ProgressBar,
     ) -> Result<Vec<TranscriptSegment>> {
+        let audio = ffmpeg_decoder::file(audio)?;
+
         let audio_path = audio
-            .as_ref()
+            .path()
             .to_str()
             .ok_or_else(|| anyhow!("Invalid audio path"))?;
 
@@ -117,6 +126,7 @@ impl WhisperKit {
                 model_name_ptr,
                 tx_ptr as *mut c_void,
                 whisperkit_callback,
+                whisperkit_progress_callback,
             );
         }
 
@@ -127,10 +137,9 @@ impl WhisperKit {
             match msg {
                 BridgeMessage::Segment(seg) => {
                     segments.push(seg);
-                    // Update progress bar if possible?
-                    // WhisperKit doesn't give easy progress percentage in this simple bridge.
-                    // We could estimate or just tick.
-                    pb.tick();
+                }
+                BridgeMessage::Progress(p) => {
+                    pb.set_position(p as u64);
                 }
                 BridgeMessage::Error(e) => {
                     // Reclaim the box

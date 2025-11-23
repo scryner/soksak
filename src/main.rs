@@ -12,7 +12,9 @@ use indicatif::{ProgressBar, ProgressStyle};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use crate::{config::WhisperConfig, transcribe::whisper_cpp::Whisper};
+use crate::config::{TranscriptionEngine, WhisperConfig};
+use crate::transcribe::whisper_cpp::Whisper;
+use crate::transcribe::whisperkit::WhisperKit;
 
 #[derive(Parser)]
 #[command(name = "soksak")]
@@ -73,16 +75,11 @@ async fn main() -> anyhow::Result<()> {
 
             // 2. Transcribe
             println!("Transcribing...");
-            let mut whisper = Whisper::new(&app_config.transcription, lang.clone())
-                .context("Failed to create Whisper instance")?;
 
-            let whisper_conf = match &run_config {
-                Some(config) => match &config.whisper {
-                    Some(conf) => conf.clone(),
-                    None => WhisperConfig::default(),
-                },
-                None => WhisperConfig::default(),
-            };
+            // Get model config for the specified language
+            let model_config = app_config.transcription.models.get(&lang).ok_or_else(|| {
+                anyhow::anyhow!("No transcription model configured for language: {:?}", lang)
+            })?;
 
             let mut pb = indicatif::ProgressBar::new(100);
             pb.set_style(
@@ -94,9 +91,30 @@ async fn main() -> anyhow::Result<()> {
                     .progress_chars("#>-"),
             );
 
-            let segments = whisper
-                .transcribe(&input_path, &whisper_conf, &mut pb)
-                .context("Failed to transcribe")?;
+            let segments = match &model_config.engine {
+                TranscriptionEngine::WhisperCpp => {
+                    let mut whisper = Whisper::new(&app_config.transcription, lang.clone())
+                        .context("Failed to create Whisper instance")?;
+
+                    let whisper_conf = match &run_config {
+                        Some(config) => match &config.whisper {
+                            Some(conf) => conf.clone(),
+                            None => WhisperConfig::default(),
+                        },
+                        None => WhisperConfig::default(),
+                    };
+
+                    whisper
+                        .transcribe(&input_path, &whisper_conf, &mut pb)
+                        .context("Failed to transcribe with WhisperCpp")?
+                }
+                TranscriptionEngine::Whisperkit => {
+                    let whisperkit = WhisperKit::new_with_model_name(&model_config.model);
+                    whisperkit
+                        .transcribe(&input_path, &mut pb)
+                        .context("Failed to transcribe with WhisperKit")?
+                }
+            };
 
             pb.finish_with_message("Transcription complete");
 

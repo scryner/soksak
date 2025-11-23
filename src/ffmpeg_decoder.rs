@@ -1,15 +1,17 @@
 use anyhow::{Result, anyhow};
 use audrey::Reader;
-use std::env::temp_dir;
 use std::path::Path;
+use std::process::Command;
 use std::process::Stdio;
-use std::{fs::File, process::Command};
+use tempfile::NamedTempFile;
 
 // ffmpeg -i input.mp3 -ar 16000 output.wav
-fn use_ffmpeg<P: AsRef<Path>>(input_path: P) -> Result<Vec<i16>> {
+fn use_ffmpeg<P: AsRef<Path>>(input_path: P) -> Result<NamedTempFile> {
     println!("Using ffmpeg to convert audio file");
 
-    let temp_file = temp_dir().join(format!("{}.wav", uuid::Uuid::new_v4()));
+    let temp_file = NamedTempFile::with_suffix(".wav")?;
+    let temp_path = temp_file.path();
+
     let mut pid = Command::new("ffmpeg")
         .args([
             "-i",
@@ -23,7 +25,7 @@ fn use_ffmpeg<P: AsRef<Path>>(input_path: P) -> Result<Vec<i16>> {
             "1",
             "-c:a",
             "pcm_s16le",
-            (temp_file.to_str().unwrap()),
+            temp_path.to_str().unwrap(),
             "-hide_banner",
             "-y",
             "-loglevel",
@@ -33,23 +35,26 @@ fn use_ffmpeg<P: AsRef<Path>>(input_path: P) -> Result<Vec<i16>> {
         .spawn()?;
 
     if pid.wait()?.success() {
-        let output = File::open(&temp_file)?;
-        let mut reader = Reader::new(output)?;
-        let samples: Result<Vec<i16>, _> = reader.samples().collect();
-        std::fs::remove_file(temp_file)?;
-
         println!("Audio file converted successfully");
-
-        samples.map_err(std::convert::Into::into)
+        Ok(temp_file)
     } else {
         Err(anyhow!("unable to convert file"))
     }
 }
 
 pub fn read_file<P: AsRef<Path>>(audio_file_path: P) -> Result<Vec<f32>> {
-    let audio_buf = use_ffmpeg(&audio_file_path)?;
+    let temp_file = use_ffmpeg(&audio_file_path)?;
+
+    let mut reader = Reader::new(temp_file.reopen()?)?;
+    let audio_buf: Vec<i16> = reader.samples().collect::<Result<_, _>>()?;
     let mut output = vec![0.0f32; audio_buf.len()];
 
     whisper_rs::convert_integer_to_float_audio(&audio_buf, &mut output)?;
     Ok(output)
+    // temp_file is automatically deleted when it goes out of scope here
+}
+
+pub fn file<P: AsRef<Path>>(audio_file_path: P) -> Result<NamedTempFile> {
+    let temp_file = use_ffmpeg(&audio_file_path)?;
+    Ok(temp_file)
 }

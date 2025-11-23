@@ -354,8 +354,21 @@ pub struct AppConfig {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum TranscriptionEngine {
+    WhisperCpp,
+    Whisperkit,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct TranscriptionModelConfig {
+    pub engine: TranscriptionEngine,
+    pub model: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct TranscriptionConfig {
-    pub models: HashMap<Language, String>,
+    pub models: HashMap<Language, TranscriptionModelConfig>,
 }
 
 #[derive(Debug, Deserialize)]
