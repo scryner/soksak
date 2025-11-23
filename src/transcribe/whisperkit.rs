@@ -38,8 +38,8 @@ extern "C" fn whisperkit_callback(
         } else if !text.is_null() {
             let text_str = CStr::from_ptr(text).to_string_lossy().into_owned();
             let segment = TranscriptSegment {
-                start: (start * 1000.0) as i64, // s to ms
-                end: (end * 1000.0) as i64,     // s to ms
+                start: (start * 100.0) as i64, // s to cs
+                end: (end * 100.0) as i64,     // s to cs
                 text: text_str,
             };
             let _ = sender.send(BridgeMessage::Segment(segment));

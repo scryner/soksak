@@ -1,5 +1,6 @@
 import Foundation
 import WhisperKit
+import CoreML
 
 @_cdecl("whisperkit_transcribe")
 public func whisperkit_transcribe(
@@ -23,13 +24,24 @@ public func whisperkit_transcribe(
     Task {
         do {
             // Initialize WhisperKit
-            let pipe: WhisperKit
+            // Initialize WhisperKit
+            var config: WhisperKitConfig
             if let folder = modelFolder {
-                 pipe = try await WhisperKit(WhisperKitConfig(modelFolder: folder))
+                 config = WhisperKitConfig(modelFolder: folder)
             } else {
-                //  pipe = try await WhisperKit(model: modelNameStr, download: true)
-                pipe = try await WhisperKit(WhisperKitConfig(model: modelNameStr, download: true))
+                config = WhisperKitConfig(model: modelNameStr, download: true)
             }
+            
+            // Use all available compute units (CPU, GPU, Neural Engine)
+            let compute = MLComputeUnits.all
+            config.computeOptions = ModelComputeOptions(
+                melCompute: MLComputeUnits.cpuAndGPU,
+                audioEncoderCompute: MLComputeUnits.cpuAndNeuralEngine,
+                textDecoderCompute: MLComputeUnits.cpuAndNeuralEngine,
+                prefillCompute: compute
+            )
+            
+            let pipe = try await WhisperKit(config)
 
             // Load audio
             // WhisperKit expects [Float] samples or an AVAudioFile.
