@@ -315,22 +315,24 @@ async fn filter_batch(
     let filter_json = serde_json::to_string(&filter_items)?;
 
     // Construct combined filter prompt
-    let mut filter_conditions = String::new();
+    // Construct combined filter prompt
+    let mut filter_instructions = String::new();
     for (i, filter) in filters.iter().enumerate() {
-        filter_conditions.push_str(&format!(
-            "- Condition {}: {} (Threshold: {})\n",
+        filter_instructions.push_str(&format!(
+            "{}. {} (Confidence Threshold: {})\n",
             i + 1,
             filter.prompt,
-            filter.threshold.unwrap_or(0.5)
+            filter.threshold.unwrap_or(0.7)
         ));
     }
 
     let filter_prompt = format!(
-        "Analyze the following JSON list of texts. Identify items that match **ANY** of the following conditions with a confidence probability higher than the specified threshold:\n\
+        "You are a content filter. Analyze the following JSON list of texts and identify items that should be removed based on the following instructions:\n\
         {}\n\
+        For each item, if it matches any of the instructions with a confidence score higher than the specified threshold, mark it for removal.\n\
         Return the IDs of items to remove in JSON format: {{ \"remove_ids\": [0, 2, ...] }}. \
         Output ONLY the JSON.",
-        filter_conditions
+        filter_instructions
     );
 
     // Determine provider for filtering
