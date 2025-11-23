@@ -28,11 +28,6 @@ pub struct BatchTranslationResponse {
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
-pub struct BatchTranslationResponseWrapper {
-    pub items: Vec<BatchTranslationResponse>,
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
 pub struct FilterResponse {
     pub remove_ids: Vec<usize>,
 }
@@ -144,7 +139,13 @@ pub async fn process_translation(
         if let Some(edit) = edit_config {
             if let Some(instructions) = &edit.instructions {
                 if !instructions.is_empty() {
-                    mapped_results = edit_batch(mapped_results, edit, app_config).await?;
+                    mapped_results = edit_batch(
+                        mapped_results,
+                        edit,
+                        app_config,
+                        &translate_config.target_lang,
+                    )
+                    .await?;
                 }
             }
         }
@@ -180,6 +181,7 @@ async fn edit_batch(
     batch: Vec<TranslatedSegment>,
     edit_config: &Edit,
     app_config: &AppConfig,
+    target_lang: &Language,
 ) -> Result<Vec<TranslatedSegment>> {
     let (provider_id, model_name) = edit_config
         .default_model
@@ -194,15 +196,12 @@ async fn edit_batch(
         .ok_or_else(|| anyhow::anyhow!("Provider {} not found", provider_id))?;
     let client = LlmClient::new(provider_config.clone());
 
-    let batch_items: Vec<BatchItem> = batch
+    // Join all texts with newlines
+    let batch_text = batch
         .iter()
-        .enumerate()
-        .map(|(i, seg)| BatchItem {
-            id: i,
-            text: seg.translated.clone(),
-        })
-        .collect();
-    let batch_json = serde_json::to_string(&batch_items)?;
+        .map(|seg| seg.translated.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
 
     let instructions_str = edit_config
         .instructions
@@ -212,11 +211,16 @@ async fn edit_batch(
 
     let system_prompt = format!(
         "You are a professional editor. Refine the following translated sentences based on these instructions:\n\
+        Target Language: {}\n\
+        Instructions:\n\
         {}\n\
         DO NOT TRANSLATE THE TEXT. JUST EDIT THE TEXT BASED ON THE INSTRUCTIONS.\n\
-        Maintain the JSON structure with the same 'id' for each item.\n\
-        Output ONLY the JSON response: {{ \"items\": [{{ \"id\": 0, \"translated_text\": \"...\" }}, ...] }}",
-        instructions_str
+        The input text is a list of sentences separated by newlines.\n\
+        Edit each line one by one and output the refined text separated by newlines.\n\
+        IMPORTANT: You must maintain the exact line-by-line correspondence. Line N of the output must be the edited version of Line N of the input.\n\
+        Do not merge, split, or reorder lines.\n\
+        Output ONLY the refined text, no other comments or explanations.",
+        target_lang, instructions_str
     );
 
     let messages = vec![
@@ -226,70 +230,34 @@ async fn edit_batch(
         },
         Message {
             role: "user".to_string(),
-            content: format!("Input JSON:\n{}", batch_json),
+            content: format!("Input Text:\n{}", batch_text),
         },
     ];
 
-    let schema = serde_json::json!({
-        "type": "object",
-        "properties": {
-            "items": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "id": { "type": "integer" },
-                        "translated_text": { "type": "string" }
-                    },
-                    "required": ["id", "translated_text"],
-                    "additionalProperties": false
-                }
-            }
-        },
-        "required": ["items"],
-        "additionalProperties": false
-    });
-
-    let curl_cmd = client.get_curl_command(model_name, &messages, true, Some(&schema));
+    let curl_cmd = client.get_curl_command(model_name, &messages, false, None);
     log::debug!("CURL: {}", curl_cmd);
 
     let response_text = client
-        .chat_completion(model_name, messages, true, Some(schema))
+        .chat_completion(model_name, messages, false, None)
         .await?;
 
     let clean_response = response_text
         .trim()
-        .trim_start_matches("```json")
         .trim_start_matches("```")
         .trim_end_matches("```")
         .trim();
 
-    let refined_items: Vec<BatchTranslationResponse> =
-        match serde_json::from_str::<BatchTranslationResponseWrapper>(clean_response) {
-            Ok(wrapper) => wrapper.items,
-            Err(_) => {
-                // Fallback
-                match serde_json::from_str::<Vec<BatchTranslationResponse>>(clean_response) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        eprintln!(
-                            "Failed to parse edit JSON: {}. Response: {}",
-                            e, response_text
-                        );
-                        return Ok(batch); // Fallback to unedited
-                    }
-                }
-            }
-        };
+    let refined_lines: Vec<&str> = clean_response.lines().collect();
 
     // Map back
     let mut refined_batch = Vec::new();
     for (i, segment) in batch.into_iter().enumerate() {
-        let refined_text = refined_items
-            .iter()
-            .find(|t| t.id == i)
-            .map(|t| t.translated_text.clone())
-            .unwrap_or(segment.translated); // Fallback to unedited if missing
+        let refined_text = if i < refined_lines.len() {
+            refined_lines[i].trim().to_string()
+        } else {
+            // Fallback to unedited if missing
+            segment.translated.clone()
+        };
 
         refined_batch.push(TranslatedSegment {
             translated: refined_text,

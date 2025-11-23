@@ -2,11 +2,6 @@ use crate::llm::{LlmClient, Message};
 use crate::translate::{BatchItem, BatchTranslationResponse, TranslatedSegment};
 use anyhow::Result;
 
-#[derive(serde::Deserialize)]
-struct BatchTranslationResponseWrapper {
-    items: Vec<BatchTranslationResponse>,
-}
-
 pub async fn translate_batch(
     client: &LlmClient,
     model_name: &str,
@@ -15,13 +10,20 @@ pub async fn translate_batch(
     prepending_system_prompt: &str,
     summary: &str,
 ) -> Result<Vec<BatchTranslationResponse>> {
-    let batch_json = serde_json::to_string(batch_items)?;
+    // Join all texts with newlines
+    let batch_text = batch_items
+        .iter()
+        .map(|item| item.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
 
     let system_prompt = format!(
-        "{}You are a professional video subtitle translator. Translate the following JSON list of sentences into {}. \
-        Maintain the JSON structure with the same 'id' for each item. \
-        Use the provided summary to ensure natural flow and correct tone. \
-        Output ONLY the JSON response: {{ \"items\": [{{ \"id\": 0, \"translated_text\": \"...\" }}, ...] }}",
+        "{}You are a professional video subtitle translator. Translate the following text into {}.\n\
+        The input text is a list of sentences separated by newlines.\n\
+        Translate each line one by one and output the translated text separated by newlines.\n\
+        Maintain the same number of lines as the input.\n\
+        Use the provided summary to ensure natural flow and correct tone.\n\
+        Output ONLY the translated text, no other comments or explanations.",
         prepending_system_prompt, target_lang
     );
 
@@ -33,67 +35,41 @@ pub async fn translate_batch(
         Message {
             role: "user".to_string(),
             content: format!(
-                "Summary of previous conversation: {}\n\nInput JSON:\n{}",
-                summary, batch_json
+                "Summary of previous conversation: {}\n\nInput Text:\n{}",
+                summary, batch_text
             ),
         },
     ];
 
-    let schema = serde_json::json!({
-        "type": "object",
-        "properties": {
-            "items": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "id": { "type": "integer" },
-                        "translated_text": { "type": "string" }
-                    },
-                    "required": ["id", "translated_text"],
-                    "additionalProperties": false
-                }
-            }
-        },
-        "required": ["items"],
-        "additionalProperties": false
-    });
-
     let response_text = client
-        .chat_completion(model_name, messages, true, Some(schema))
+        .chat_completion(model_name, messages, false, None)
         .await?;
 
     let clean_response = response_text
         .trim()
-        .trim_start_matches("```json")
         .trim_start_matches("```")
         .trim_end_matches("```")
         .trim();
 
-    // Try parsing as wrapper first
-    match serde_json::from_str::<BatchTranslationResponseWrapper>(clean_response) {
-        Ok(wrapper) => Ok(wrapper.items),
-        Err(_) => {
-            // Fallback: try parsing as list directly (for providers that might ignore schema or old behavior)
-            match serde_json::from_str::<Vec<BatchTranslationResponse>>(clean_response) {
-                Ok(t) => Ok(t),
-                Err(e) => {
-                    eprintln!(
-                        "Failed to parse translation JSON: {}. Response: {}",
-                        e, response_text
-                    );
-                    // Fallback: return original text
-                    Ok(batch_items
-                        .iter()
-                        .map(|item| BatchTranslationResponse {
-                            id: item.id,
-                            translated_text: item.text.clone(),
-                        })
-                        .collect())
-                }
-            }
-        }
+    let translated_lines: Vec<&str> = clean_response.lines().collect();
+
+    // Map back to BatchTranslationResponse
+    let mut responses = Vec::new();
+    for (i, item) in batch_items.iter().enumerate() {
+        let translated_text = if i < translated_lines.len() {
+            translated_lines[i].trim().to_string()
+        } else {
+            // Fallback if LLM output fewer lines
+            String::new()
+        };
+
+        responses.push(BatchTranslationResponse {
+            id: item.id,
+            translated_text,
+        });
     }
+
+    Ok(responses)
 }
 
 pub async fn update_summary(
