@@ -12,7 +12,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use crate::{config::WhisperConfig, transcribe::Whisper};
+use crate::{config::WhisperConfig, transcribe::whisper_cpp::Whisper};
 
 #[derive(Parser)]
 #[command(name = "soksak")]

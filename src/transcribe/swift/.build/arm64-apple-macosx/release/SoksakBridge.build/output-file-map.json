@@ -1,0 +1,13 @@
+{
+  "": {
+    "dependencies": "/Users/scryner/persornal_work/workspace/soksak/src/transcribe/swift/.build/arm64-apple-macosx/release/SoksakBridge.build/SoksakBridge.d",
+    "object": "/Users/scryner/persornal_work/workspace/soksak/src/transcribe/swift/.build/arm64-apple-macosx/release/SoksakBridge.build/SoksakBridge.o",
+    "swift-dependencies": "/Users/scryner/persornal_work/workspace/soksak/src/transcribe/swift/.build/arm64-apple-macosx/release/SoksakBridge.build/master.swiftdeps"
+  },
+  "/Users/scryner/persornal_work/workspace/soksak/src/transcribe/swift/Sources/SoksakBridge/Bridge.swift": {
+    "object": "/Users/scryner/persornal_work/workspace/soksak/src/transcribe/swift/.build/arm64-apple-macosx/release/SoksakBridge.build/Bridge.swift.o",
+    "swiftmodule": "/Users/scryner/persornal_work/workspace/soksak/src/transcribe/swift/.build/arm64-apple-macosx/release/SoksakBridge.build/Bridge~partial.swiftmodule",
+    "swift-dependencies": "/Users/scryner/persornal_work/workspace/soksak/src/transcribe/swift/.build/arm64-apple-macosx/release/SoksakBridge.build/Bridge.swiftdeps",
+    "diagnostics": "/Users/scryner/persornal_work/workspace/soksak/src/transcribe/swift/.build/arm64-apple-macosx/release/SoksakBridge.build/Bridge.dia"
+  }
+}

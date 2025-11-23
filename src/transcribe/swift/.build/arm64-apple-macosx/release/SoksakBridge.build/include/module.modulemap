@@ -1,0 +1,3 @@
+module SoksakBridge {
+    header "/Users/scryner/persornal_work/workspace/soksak/src/transcribe/swift/.build/arm64-apple-macosx/release/SoksakBridge.build/include/SoksakBridge-Swift.h"
+}
