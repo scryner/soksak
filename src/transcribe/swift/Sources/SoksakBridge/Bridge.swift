@@ -2,61 +2,81 @@ import Foundation
 import WhisperKit
 import CoreML
 
-@_cdecl("whisperkit_transcribe")
-public func whisperkit_transcribe(
-    audioPath: UnsafePointer<CChar>,
+public class WhisperContext {
+    var pipe: WhisperKit?
+    let modelPath: String?
+    let modelName: String?
+    
+    init(modelPath: String?, modelName: String?) {
+        self.modelPath = modelPath
+        self.modelName = modelName
+    }
+    
+    func getPipe() async throws -> WhisperKit {
+        if let pipe = pipe {
+            return pipe
+        }
+        
+        var config: WhisperKitConfig
+        if let folder = modelPath {
+             config = WhisperKitConfig(modelFolder: folder)
+        } else {
+            config = WhisperKitConfig(model: modelName, load: true, download: true)
+        }
+        
+        // Use all available compute units
+        let compute = MLComputeUnits.all
+        config.computeOptions = ModelComputeOptions(
+            melCompute: compute,
+            audioEncoderCompute: compute,
+            textDecoderCompute: compute,
+            prefillCompute: compute
+        )
+        
+        let pipe = try await WhisperKit(config)
+        self.pipe = pipe
+        return pipe
+    }
+}
+
+@_cdecl("whisperkit_create_context")
+public func whisperkit_create_context(
     modelPath: UnsafePointer<CChar>?,
-    modelName: UnsafePointer<CChar>?,
-    context: UnsafeMutableRawPointer,
-    callback: @convention(c) (UnsafePointer<CChar>?, UnsafePointer<CChar>?, Double, Double, UnsafeMutableRawPointer) -> Void,
-    progressCallback: @convention(c) (Double, UnsafeMutableRawPointer) -> Void
-) {
-    let audioPathStr = String(cString: audioPath)
-    var modelFolder: String? = nil
+    modelName: UnsafePointer<CChar>?
+) -> UnsafeMutableRawPointer {
+    var modelPathStr: String? = nil
     if let modelPath = modelPath {
-        modelFolder = String(cString: modelPath)
+        modelPathStr = String(cString: modelPath)
     }
     var modelNameStr: String? = nil
     if let modelName = modelName {
         modelNameStr = String(cString: modelName)
     }
     
+    let context = WhisperContext(modelPath: modelPathStr, modelName: modelNameStr)
+    return Unmanaged.passRetained(context).toOpaque()
+}
+
+@_cdecl("whisperkit_release_context")
+public func whisperkit_release_context(context: UnsafeMutableRawPointer) {
+    Unmanaged<WhisperContext>.fromOpaque(context).release()
+}
+
+@_cdecl("whisperkit_transcribe")
+public func whisperkit_transcribe(
+    context: UnsafeMutableRawPointer,
+    audioPath: UnsafePointer<CChar>,
+    callback: @convention(c) (UnsafePointer<CChar>?, UnsafePointer<CChar>?, Double, Double, UnsafeMutableRawPointer) -> Void,
+    progressCallback: @convention(c) (Double, UnsafeMutableRawPointer) -> Void,
+    callbackContext: UnsafeMutableRawPointer
+) {
+    let whisperContext = Unmanaged<WhisperContext>.fromOpaque(context).takeUnretainedValue()
+    let audioPathStr = String(cString: audioPath)
+    
     Task {
         do {
-            // Initialize WhisperKit
-            // Initialize WhisperKit
-            var config: WhisperKitConfig
-            if let folder = modelFolder {
-                 config = WhisperKitConfig(modelFolder: folder)
-            } else {
-                config = WhisperKitConfig(model: modelNameStr, download: true)
-            }
+            let pipe = try await whisperContext.getPipe()
             
-            // Use all available compute units (CPU, GPU, Neural Engine)
-            let compute = MLComputeUnits.all
-            config.computeOptions = ModelComputeOptions(
-                melCompute: MLComputeUnits.cpuAndGPU,
-                audioEncoderCompute: MLComputeUnits.cpuAndNeuralEngine,
-                textDecoderCompute: MLComputeUnits.cpuAndNeuralEngine,
-                prefillCompute: compute
-            )
-            
-            let pipe = try await WhisperKit(config)
-
-            // Load audio
-            // WhisperKit expects [Float] samples or an AVAudioFile.
-            // For simplicity, let's assume we can load the file using standard AVFoundation or similar,
-            // but WhisperKit has helpers.
-            // Actually, WhisperKit's `transcribe(audioPath:)` is convenient if available,
-            // but checking the docs/examples, it often takes an array of floats or an AVAudioFile.
-            
-            // Let's use a simple approach: load audio using a helper if available, or just pass the path if supported.
-            // Looking at WhisperKit API, `transcribe(audioPath:)` might be available in higher level abstractions,
-            // but `pipe.transcribe(audioFile:)` is common.
-            
-            // let url = URL(fileURLWithPath: audioPathStr)
-            
-            // Transcribe
             // Load audio
             let audioBuffer = try AudioProcessor.loadAudio(fromPath: audioPathStr)
             let duration = Double(audioBuffer.frameLength) / audioBuffer.format.sampleRate
@@ -70,7 +90,7 @@ public func whisperkit_transcribe(
                     if let lastSegment = segments.last {
                         let current = Double(lastSegment.end)
                         let percent = (current / duration) * 100.0
-                        progressCallback(percent, context)
+                        progressCallback(percent, callbackContext)
                     }
                 }
             )
@@ -82,18 +102,18 @@ public func whisperkit_transcribe(
                     let end = Double(segment.end)
                     
                     text.withCString { textPtr in
-                        callback(textPtr, nil, start, end, context)
+                        callback(textPtr, nil, start, end, callbackContext)
                     }
                 }
             }
             
             // Signal completion with nulls
-            callback(nil, nil, 0, 0, context)
+            callback(nil, nil, 0, 0, callbackContext)
             
         } catch {
             let errorMsg = error.localizedDescription
             errorMsg.withCString { errorPtr in
-                callback(nil, errorPtr, 0, 0, context)
+                callback(nil, errorPtr, 0, 0, callbackContext)
             }
         }
     }

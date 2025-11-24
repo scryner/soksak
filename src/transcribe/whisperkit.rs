@@ -52,34 +52,52 @@ extern "C" fn whisperkit_callback(
 
 #[link(name = "SoksakBridge", kind = "static")]
 unsafe extern "C" {
-    fn whisperkit_transcribe(
-        audio_path: *const c_char,
+    fn whisperkit_create_context(
         model_path: *const c_char,
         model_name: *const c_char,
+    ) -> *mut c_void;
+
+    fn whisperkit_release_context(context: *mut c_void);
+
+    fn whisperkit_transcribe(
         context: *mut c_void,
+        audio_path: *const c_char,
         callback: extern "C" fn(*const c_char, *const c_char, f64, f64, *mut c_void),
         progress_callback: extern "C" fn(f64, *mut c_void),
+        callback_context: *mut c_void,
     );
 }
 
 pub struct WhisperKit {
-    model_path: Option<String>,
-    model_name: Option<String>,
+    context: *mut c_void,
+}
+
+unsafe impl Send for WhisperKit {}
+unsafe impl Sync for WhisperKit {}
+
+impl Drop for WhisperKit {
+    fn drop(&mut self) {
+        unsafe {
+            whisperkit_release_context(self.context);
+        }
+    }
 }
 
 impl WhisperKit {
     #[allow(dead_code)]
     pub fn new(model_path: &str) -> Self {
-        Self {
-            model_path: Some(model_path.to_string()),
-            model_name: None,
+        let model_path_c = CString::new(model_path).unwrap();
+        unsafe {
+            let context = whisperkit_create_context(model_path_c.as_ptr(), std::ptr::null());
+            Self { context }
         }
     }
 
     pub fn new_with_model_name(model_name: &str) -> Self {
-        Self {
-            model_path: None,
-            model_name: Some(model_name.to_string()),
+        let model_name_c = CString::new(model_name).unwrap();
+        unsafe {
+            let context = whisperkit_create_context(std::ptr::null(), model_name_c.as_ptr());
+            Self { context }
         }
     }
 
@@ -97,36 +115,16 @@ impl WhisperKit {
 
         let audio_c = CString::new(audio_path)?;
 
-        let model_path_c = match &self.model_path {
-            Some(path) => Some(CString::new(path.as_str())?),
-            None => None,
-        };
-
-        let model_name_c = match &self.model_name {
-            Some(name) => Some(CString::new(name.as_str())?),
-            None => None,
-        };
-
         let (tx, rx) = channel::<BridgeMessage>();
         let tx_ptr = Box::into_raw(Box::new(tx));
 
         unsafe {
-            let model_path_ptr = model_path_c
-                .as_ref()
-                .map(|s| s.as_ptr())
-                .unwrap_or(std::ptr::null());
-            let model_name_ptr = model_name_c
-                .as_ref()
-                .map(|s| s.as_ptr())
-                .unwrap_or(std::ptr::null());
-
             whisperkit_transcribe(
+                self.context,
                 audio_c.as_ptr(),
-                model_path_ptr,
-                model_name_ptr,
-                tx_ptr as *mut c_void,
                 whisperkit_callback,
                 whisperkit_progress_callback,
+                tx_ptr as *mut c_void,
             );
         }
 
