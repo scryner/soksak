@@ -109,7 +109,12 @@ async fn main() -> anyhow::Result<()> {
                         .context("Failed to transcribe with WhisperCpp")?
                 }
                 TranscriptionEngine::Whisperkit => {
-                    let whisperkit = WhisperKit::new_with_model_name(&model_config.model);
+                    let lang_str = if lang == Language::Auto {
+                        None
+                    } else {
+                        Some(lang.as_str())
+                    };
+                    let whisperkit = WhisperKit::new_with_model_name(&model_config.model, lang_str);
                     whisperkit
                         .transcribe(&input_path, &mut pb)
                         .context("Failed to transcribe with WhisperKit")?

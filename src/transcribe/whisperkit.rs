@@ -55,6 +55,7 @@ unsafe extern "C" {
     fn whisperkit_create_context(
         model_path: *const c_char,
         model_name: *const c_char,
+        lang: *const c_char,
     ) -> *mut c_void;
 
     fn whisperkit_release_context(context: *mut c_void);
@@ -85,18 +86,32 @@ impl Drop for WhisperKit {
 
 impl WhisperKit {
     #[allow(dead_code)]
-    pub fn new(model_path: &str) -> Self {
+    pub fn new(model_path: &str, lang: Option<&str>) -> Self {
         let model_path_c = CString::new(model_path).unwrap();
+        let lang_c = lang.map(|l| CString::new(l).unwrap());
+        let lang_ptr = lang_c
+            .as_ref()
+            .map(|l| l.as_ptr())
+            .unwrap_or(std::ptr::null());
+
         unsafe {
-            let context = whisperkit_create_context(model_path_c.as_ptr(), std::ptr::null());
+            let context =
+                whisperkit_create_context(model_path_c.as_ptr(), std::ptr::null(), lang_ptr);
             Self { context }
         }
     }
 
-    pub fn new_with_model_name(model_name: &str) -> Self {
+    pub fn new_with_model_name(model_name: &str, lang: Option<&str>) -> Self {
         let model_name_c = CString::new(model_name).unwrap();
+        let lang_c = lang.map(|l| CString::new(l).unwrap());
+        let lang_ptr = lang_c
+            .as_ref()
+            .map(|l| l.as_ptr())
+            .unwrap_or(std::ptr::null());
+
         unsafe {
-            let context = whisperkit_create_context(std::ptr::null(), model_name_c.as_ptr());
+            let context =
+                whisperkit_create_context(std::ptr::null(), model_name_c.as_ptr(), lang_ptr);
             Self { context }
         }
     }
@@ -184,7 +199,7 @@ mod tests {
         let mut pb = indicatif::ProgressBar::new(0);
 
         // Try with local model first
-        let whisper = WhisperKit::new_with_model_name(model_path);
+        let whisper = WhisperKit::new_with_model_name(model_path, None);
         let result = whisper.transcribe(&audio_path, &mut pb);
 
         match result {
@@ -199,7 +214,7 @@ mod tests {
                 println!("Local model failed (expected if model is invalid): {}", e);
                 println!("Attempting to download and use 'openai_whisper-tiny'...");
 
-                let whisper_tiny = WhisperKit::new_with_model_name("openai_whisper-tiny");
+                let whisper_tiny = WhisperKit::new_with_model_name("openai_whisper-tiny", None);
                 let result_tiny = whisper_tiny.transcribe(&audio_path, &mut pb);
 
                 match result_tiny {

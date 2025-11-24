@@ -6,10 +6,12 @@ public class WhisperContext {
     var pipe: WhisperKit?
     let modelPath: String?
     let modelName: String?
+    let language: String?
     
-    init(modelPath: String?, modelName: String?) {
+    init(modelPath: String?, modelName: String?, language: String?) {
         self.modelPath = modelPath
         self.modelName = modelName
+        self.language = language
     }
     
     func getPipe() async throws -> WhisperKit {
@@ -25,12 +27,11 @@ public class WhisperContext {
         }
         
         // Use all available compute units
-        let compute = MLComputeUnits.all
         config.computeOptions = ModelComputeOptions(
-            melCompute: compute,
-            audioEncoderCompute: compute,
-            textDecoderCompute: compute,
-            prefillCompute: compute
+            melCompute: MLComputeUnits.all,
+            audioEncoderCompute: MLComputeUnits.cpuAndNeuralEngine,
+            textDecoderCompute: MLComputeUnits.cpuAndNeuralEngine,
+            prefillCompute: MLComputeUnits.all
         )
         
         let pipe = try await WhisperKit(config)
@@ -42,7 +43,8 @@ public class WhisperContext {
 @_cdecl("whisperkit_create_context")
 public func whisperkit_create_context(
     modelPath: UnsafePointer<CChar>?,
-    modelName: UnsafePointer<CChar>?
+    modelName: UnsafePointer<CChar>?,
+    lang: UnsafePointer<CChar>?
 ) -> UnsafeMutableRawPointer {
     var modelPathStr: String? = nil
     if let modelPath = modelPath {
@@ -52,8 +54,12 @@ public func whisperkit_create_context(
     if let modelName = modelName {
         modelNameStr = String(cString: modelName)
     }
+    var langStr: String? = nil
+    if let lang = lang {
+        langStr = String(cString: lang)
+    }
     
-    let context = WhisperContext(modelPath: modelPathStr, modelName: modelNameStr)
+    let context = WhisperContext(modelPath: modelPathStr, modelName: modelNameStr, language: langStr)
     return Unmanaged.passRetained(context).toOpaque()
 }
 
@@ -82,9 +88,22 @@ public func whisperkit_transcribe(
             let duration = Double(audioBuffer.frameLength) / audioBuffer.format.sampleRate
             let audioSamples = Array(UnsafeBufferPointer(start: audioBuffer.floatChannelData![0], count: Int(audioBuffer.frameLength)))
 
+            // Decoding Options
+            var decodingOptions = DecodingOptions()
+            if let lang = whisperContext.language {
+                decodingOptions.language = lang
+            }
+
+            // Set concurrent worker count to 0 (unlimited)
+            decodingOptions.concurrentWorkerCount = 0
+
+            // Set chunking strategy to vad
+            decodingOptions.chunkingStrategy = .vad
+
             // Transcribe
             let results = try await pipe.transcribe(
                 audioArray: audioSamples,
+                decodeOptions: decodingOptions,
                 callback: nil,
                 segmentCallback: { segments in
                     if let lastSegment = segments.last {
