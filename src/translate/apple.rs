@@ -84,6 +84,14 @@ pub async fn translate_batch(
     let mut results = Vec::new();
 
     for item in batch_items {
+        if item.text.is_empty() {
+            results.push(BatchTranslationResponse {
+                id: item.id,
+                translated_text: String::new(),
+            });
+            continue;
+        }
+
         // Map String error to anyhow::Error
         let translated_text = translate(&item.text, source_lang, target_lang)
             .await

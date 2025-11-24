@@ -100,11 +100,20 @@ public func whisperkit_transcribe(
             // Set chunking strategy to vad
             decodingOptions.chunkingStrategy = .vad
 
+            // Set decoding options to suppress special tokens and timestamps
+            decodingOptions.skipSpecialTokens = true
+            decodingOptions.withoutTimestamps = true
+            decodingOptions.suppressBlank = true
+
+            // Set temperature to 0.0
+            decodingOptions.temperature = 0.0
+            decodingOptions.temperatureIncrementOnFallback = 0.2
+            decodingOptions.temperatureFallbackCount = 5
+
             // Transcribe
             let results = try await pipe.transcribe(
                 audioArray: audioSamples,
                 decodeOptions: decodingOptions,
-                callback: nil,
                 segmentCallback: { segments in
                     if let lastSegment = segments.last {
                         let current = Double(lastSegment.end)
