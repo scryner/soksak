@@ -102,13 +102,17 @@ public func whisperkit_transcribe(
 
             // Set decoding options to suppress special tokens and timestamps
             decodingOptions.skipSpecialTokens = true
-            decodingOptions.withoutTimestamps = true
             decodingOptions.suppressBlank = true
+
+            // Some options that are not used currently (for future use)
+            // decodingOptions.withoutTimestamps = true
+            // decodingOptions.wordTimestamps = true
+            // decodingOptions.sampleLength = 180
 
             // Set temperature to 0.0
             decodingOptions.temperature = 0.0
-            decodingOptions.temperatureIncrementOnFallback = 0.2
-            decodingOptions.temperatureFallbackCount = 5
+            decodingOptions.temperatureFallbackCount = 0
+            // decodingOptions.temperatureIncrementOnFallback = 0.1
 
             // Transcribe
             let results = try await pipe.transcribe(

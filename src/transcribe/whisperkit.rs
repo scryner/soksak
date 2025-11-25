@@ -149,6 +149,10 @@ impl WhisperKit {
         for msg in rx {
             match msg {
                 BridgeMessage::Segment(seg) => {
+                    if seg.text.trim().is_empty() {
+                        continue;
+                    }
+
                     segments.push(seg);
                 }
                 BridgeMessage::Progress(p) => {
