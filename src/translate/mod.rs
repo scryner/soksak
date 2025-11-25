@@ -78,7 +78,7 @@ pub async fn process_translation(
             .enumerate()
             .map(|(i, seg)| BatchItem {
                 id: i, // Relative ID within the batch
-                text: seg.text.clone(),
+                text: seg.text.replace('\r', "").replace('\n', ""),
             })
             .collect();
 
@@ -196,10 +196,11 @@ async fn edit_batch(
         .ok_or_else(|| anyhow::anyhow!("Provider {} not found", provider_id))?;
     let client = LlmClient::new(provider_config.clone());
 
-    // Join all texts with newlines
+    // Join all texts with ID prefixes
     let batch_text = batch
         .iter()
-        .map(|seg| seg.translated.as_str())
+        .enumerate()
+        .map(|(i, seg)| format!("[{}] {}", i, seg.translated))
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -215,11 +216,18 @@ async fn edit_batch(
         Instructions:\n\
         {}\n\
         DO NOT TRANSLATE THE TEXT. JUST EDIT THE TEXT BASED ON THE INSTRUCTIONS.\n\
-        The input text is a list of sentences separated by newlines.\n\
-        Edit each line one by one and output the refined text separated by newlines.\n\
-        IMPORTANT: You must maintain the exact line-by-line correspondence. Line N of the output must be the edited version of Line N of the input.\n\
+        The input text is a list of sentences, each starting with an ID in brackets like `[0]`, `[1]`, etc.\n\
+        Edit each line one by one and output the refined text with the SAME ID prefix.\n\
+        Example Input:\n\
+        [0] Hello world\n\
+        [1] How are you?\n\
+        Example Output:\n\
+        [0] Hello World.\n\
+        [1] How are you doing?\n\
+        \n\
+        Maintain the exact ID for each line.\n\
         Do not merge, split, or reorder lines.\n\
-        Output ONLY the refined text, no other comments or explanations.",
+        Output ONLY the refined text with IDs, no other comments or explanations.",
         target_lang, instructions_str
     );
 
@@ -247,17 +255,33 @@ async fn edit_batch(
         .trim_end_matches("```")
         .trim();
 
-    let refined_lines: Vec<&str> = clean_response.lines().collect();
+    // Parse response into a map for easy lookup
+    let mut refined_map = std::collections::HashMap::new();
+    for line in clean_response.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        // Try to parse "[id] text"
+        if let Some(start_bracket) = line.find('[') {
+            if let Some(end_bracket) = line[start_bracket..].find(']') {
+                let end_bracket_idx = start_bracket + end_bracket;
+                if let Ok(id) = line[start_bracket + 1..end_bracket_idx].parse::<usize>() {
+                    let text = line[end_bracket_idx + 1..].trim().to_string();
+                    refined_map.insert(id, text);
+                }
+            }
+        }
+    }
 
     // Map back
     let mut refined_batch = Vec::new();
     for (i, segment) in batch.into_iter().enumerate() {
-        let refined_text = if i < refined_lines.len() {
-            refined_lines[i].trim().to_string()
-        } else {
+        let refined_text = refined_map.remove(&i).unwrap_or_else(|| {
             // Fallback to unedited if missing
             segment.translated.clone()
-        };
+        });
 
         refined_batch.push(TranslatedSegment {
             translated: refined_text,
@@ -285,7 +309,6 @@ async fn filter_batch(
         .collect();
     let filter_json = serde_json::to_string(&filter_items)?;
 
-    // Construct combined filter prompt
     // Construct combined filter prompt
     let mut filter_instructions = String::new();
     for (i, filter) in filters.iter().enumerate() {

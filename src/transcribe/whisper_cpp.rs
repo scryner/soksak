@@ -99,6 +99,7 @@ impl Whisper {
         params.set_print_realtime(false);
         params.set_print_timestamps(false);
         params.set_token_timestamps(false);
+        params.set_temperature(0.0);
         params.set_language(Some(self.lang.as_str()));
         match conf.initial_prompt.as_ref() {
             Some(prompt) => params.set_initial_prompt(prompt),

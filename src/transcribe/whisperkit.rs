@@ -1,4 +1,4 @@
-use crate::ffmpeg_decoder;
+// use crate::ffmpeg_decoder;
 use crate::transcribe::TranscriptSegment;
 use anyhow::{Result, anyhow};
 use std::ffi::{CStr, CString};
@@ -121,10 +121,10 @@ impl WhisperKit {
         audio: P,
         pb: &mut indicatif::ProgressBar,
     ) -> Result<Vec<TranscriptSegment>> {
-        let audio = ffmpeg_decoder::file(audio)?;
+        // let audio = ffmpeg_decoder::file(audio)?;
 
         let audio_path = audio
-            .path()
+            .as_ref()
             .to_str()
             .ok_or_else(|| anyhow!("Invalid audio path"))?;
 

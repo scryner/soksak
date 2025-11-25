@@ -10,20 +10,27 @@ pub async fn translate_batch(
     prepending_system_prompt: &str,
     summary: &str,
 ) -> Result<Vec<BatchTranslationResponse>> {
-    // Join all texts with newlines
+    // Join all texts with ID prefixes
     let batch_text = batch_items
         .iter()
-        .map(|item| item.text.as_str())
+        .map(|item| format!("[{}] {}", item.id, item.text))
         .collect::<Vec<_>>()
         .join("\n");
 
     let system_prompt = format!(
         "{}You are a professional video subtitle translator. Translate the following text into {}.\n\
-        The input text is a list of sentences separated by newlines.\n\
-        Translate each line one by one and output the translated text separated by newlines.\n\
-        Maintain the same number of lines as the input.\n\
+        The input text is a list of sentences, each starting with an ID in brackets like `[0]`, `[1]`, etc.\n\
+        Translate each line one by one and output the translated text with the SAME ID prefix.\n\
+        Example Input:\n\
+        [0] Hello world\n\
+        [1] How are you?\n\
+        Example Output:\n\
+        [0] Bonjour le monde\n\
+        [1] Comment allez-vous ?\n\
+        \n\
+        Maintain the exact ID for each line.\n\
         Use the provided summary to ensure natural flow and correct tone.\n\
-        Output ONLY the translated text, no other comments or explanations.",
+        Output ONLY the translated text with IDs, no other comments or explanations.",
         prepending_system_prompt, target_lang
     );
 
@@ -51,17 +58,33 @@ pub async fn translate_batch(
         .trim_end_matches("```")
         .trim();
 
-    let translated_lines: Vec<&str> = clean_response.lines().collect();
+    // Parse response into a map for easy lookup
+    let mut translated_map = std::collections::HashMap::new();
+    for line in clean_response.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        // Try to parse "[id] text"
+        if let Some(start_bracket) = line.find('[') {
+            if let Some(end_bracket) = line[start_bracket..].find(']') {
+                let end_bracket_idx = start_bracket + end_bracket;
+                if let Ok(id) = line[start_bracket + 1..end_bracket_idx].parse::<usize>() {
+                    let text = line[end_bracket_idx + 1..].trim().to_string();
+                    translated_map.insert(id, text);
+                }
+            }
+        }
+    }
 
     // Map back to BatchTranslationResponse
     let mut responses = Vec::new();
-    for (i, item) in batch_items.iter().enumerate() {
-        let translated_text = if i < translated_lines.len() {
-            translated_lines[i].trim().to_string()
-        } else {
-            // Fallback if LLM output fewer lines
+    for item in batch_items {
+        let translated_text = translated_map.remove(&item.id).unwrap_or_else(|| {
+            // Fallback if ID not found
             String::new()
-        };
+        });
 
         responses.push(BatchTranslationResponse {
             id: item.id,

@@ -54,6 +54,7 @@ pub fn read_file<P: AsRef<Path>>(audio_file_path: P) -> Result<Vec<f32>> {
     // temp_file is automatically deleted when it goes out of scope here
 }
 
+#[allow(dead_code)]
 pub fn file<P: AsRef<Path>>(audio_file_path: P) -> Result<NamedTempFile> {
     let temp_file = use_ffmpeg(&audio_file_path)?;
     Ok(temp_file)
