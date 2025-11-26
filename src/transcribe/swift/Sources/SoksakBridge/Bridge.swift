@@ -72,6 +72,8 @@ public func whisperkit_release_context(context: UnsafeMutableRawPointer) {
 public func whisperkit_transcribe(
     context: UnsafeMutableRawPointer,
     audioPath: UnsafePointer<CChar>,
+    temperature: Float,
+    useVad: Bool,
     callback: @convention(c) (UnsafePointer<CChar>?, UnsafePointer<CChar>?, Double, Double, UnsafeMutableRawPointer) -> Void,
     progressCallback: @convention(c) (Double, UnsafeMutableRawPointer) -> Void,
     callbackContext: UnsafeMutableRawPointer
@@ -97,8 +99,10 @@ public func whisperkit_transcribe(
             // Set concurrent worker count to 0 (unlimited)
             decodingOptions.concurrentWorkerCount = 0
 
-            // Set chunking strategy to vad
-            decodingOptions.chunkingStrategy = .vad
+            // Set chunking strategy to vad if enabled
+            if useVad {
+                decodingOptions.chunkingStrategy = .vad
+            }
 
             // Set decoding options to suppress special tokens and timestamps
             decodingOptions.skipSpecialTokens = true
@@ -109,8 +113,8 @@ public func whisperkit_transcribe(
             // decodingOptions.wordTimestamps = true
             // decodingOptions.sampleLength = 180
 
-            // Set temperature to 0.0
-            decodingOptions.temperature = 0.0
+            // Set temperature
+            decodingOptions.temperature = temperature
             decodingOptions.temperatureFallbackCount = 0
             // decodingOptions.temperatureIncrementOnFallback = 0.1
 

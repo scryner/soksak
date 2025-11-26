@@ -71,7 +71,7 @@ impl Whisper {
         // Keep the temp file alive as long as params is used
         let _vad_temp_file;
 
-        if conf.vad.unwrap_or(false) {
+        if conf.vad.unwrap_or(true) {
             let mut vod_params = WhisperVadParams::new();
             vod_params.set_min_speech_duration(150);
             vod_params.set_min_silence_duration(200);
@@ -99,7 +99,9 @@ impl Whisper {
         params.set_print_realtime(false);
         params.set_print_timestamps(false);
         params.set_token_timestamps(false);
-        params.set_temperature(0.0);
+
+        params.set_temperature(conf.temperature.unwrap_or(0.0));
+
         params.set_language(Some(self.lang.as_str()));
         match conf.initial_prompt.as_ref() {
             Some(prompt) => params.set_initial_prompt(prompt),

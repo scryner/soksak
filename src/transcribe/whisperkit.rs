@@ -1,4 +1,5 @@
 // use crate::ffmpeg_decoder;
+use crate::config::WhisperConfig;
 use crate::transcribe::TranscriptSegment;
 use anyhow::{Result, anyhow};
 use std::ffi::{CStr, CString};
@@ -63,6 +64,8 @@ unsafe extern "C" {
     fn whisperkit_transcribe(
         context: *mut c_void,
         audio_path: *const c_char,
+        temperature: f32,
+        use_vad: bool,
         callback: extern "C" fn(*const c_char, *const c_char, f64, f64, *mut c_void),
         progress_callback: extern "C" fn(f64, *mut c_void),
         callback_context: *mut c_void,
@@ -119,6 +122,7 @@ impl WhisperKit {
     pub fn transcribe<P: AsRef<Path>>(
         &self,
         audio: P,
+        conf: &WhisperConfig,
         pb: &mut indicatif::ProgressBar,
     ) -> Result<Vec<TranscriptSegment>> {
         // let audio = ffmpeg_decoder::file(audio)?;
@@ -137,6 +141,8 @@ impl WhisperKit {
             whisperkit_transcribe(
                 self.context,
                 audio_c.as_ptr(),
+                conf.temperature.unwrap_or(0.0),
+                conf.vad.unwrap_or(true),
                 whisperkit_callback,
                 whisperkit_progress_callback,
                 tx_ptr as *mut c_void,
@@ -204,7 +210,8 @@ mod tests {
 
         // Try with local model first
         let whisper = WhisperKit::new_with_model_name(model_path, None);
-        let result = whisper.transcribe(&audio_path, &mut pb);
+        let conf = WhisperConfig::default();
+        let result = whisper.transcribe(&audio_path, &conf, &mut pb);
 
         match result {
             Ok(segments) => {
@@ -219,7 +226,7 @@ mod tests {
                 println!("Attempting to download and use 'openai_whisper-tiny'...");
 
                 let whisper_tiny = WhisperKit::new_with_model_name("openai_whisper-tiny", None);
-                let result_tiny = whisper_tiny.transcribe(&audio_path, &mut pb);
+                let result_tiny = whisper_tiny.transcribe(&audio_path, &conf, &mut pb);
 
                 match result_tiny {
                     Ok(segments) => {

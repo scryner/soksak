@@ -91,18 +91,18 @@ async fn main() -> anyhow::Result<()> {
                     .progress_chars("#>-"),
             );
 
+            let whisper_conf = match &run_config {
+                Some(config) => match &config.whisper {
+                    Some(conf) => conf.clone(),
+                    None => WhisperConfig::default(),
+                },
+                None => WhisperConfig::default(),
+            };
+
             let segments = match &model_config.engine {
                 TranscriptionEngine::WhisperCpp => {
                     let mut whisper = Whisper::new(&app_config.transcription, lang.clone())
                         .context("Failed to create Whisper instance")?;
-
-                    let whisper_conf = match &run_config {
-                        Some(config) => match &config.whisper {
-                            Some(conf) => conf.clone(),
-                            None => WhisperConfig::default(),
-                        },
-                        None => WhisperConfig::default(),
-                    };
 
                     whisper
                         .transcribe(&input_path, &whisper_conf, &mut pb)
@@ -116,7 +116,7 @@ async fn main() -> anyhow::Result<()> {
                     };
                     let whisperkit = WhisperKit::new_with_model_name(&model_config.model, lang_str);
                     whisperkit
-                        .transcribe(&input_path, &mut pb)
+                        .transcribe(&input_path, &whisper_conf, &mut pb)
                         .context("Failed to transcribe with WhisperKit")?
                 }
             };

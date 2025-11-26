@@ -414,6 +414,7 @@ pub struct WhisperConfig {
     pub patience: Option<f32>,
     pub initial_prompt: Option<String>,
     pub vad: Option<bool>,
+    pub temperature: Option<f32>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
