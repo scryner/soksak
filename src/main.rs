@@ -11,6 +11,7 @@ use config::Language;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use crate::config::{TranscriptionEngine, WhisperConfig};
 use crate::transcribe::whisper_cpp::Whisper;
@@ -139,6 +140,7 @@ async fn main() -> anyhow::Result<()> {
                         .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
                         .unwrap()
                         .progress_chars("#>-"));
+                    pb_trans.enable_steady_tick(Duration::from_millis(100));
 
                     let translated_segments = translate::process_translation(
                         &lang,
@@ -194,6 +196,7 @@ async fn main() -> anyhow::Result<()> {
                     .unwrap()
                     .progress_chars("#>-"),
             );
+            pb_trans.enable_steady_tick(Duration::from_millis(100));
 
             let translated_segments = translate::process_translation(
                 &lang,

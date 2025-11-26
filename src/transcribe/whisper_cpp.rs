@@ -39,6 +39,9 @@ const DEFAULT_PATIENCE: f32 = 1.0;
 
 impl Whisper {
     pub fn new(conf: &TranscriptionConfig, lang: Language) -> Result<Self> {
+        // Disable whisper.cpp and GGML internal logging
+        whisper_rs::install_logging_hooks();
+
         // get model path according to lang
         let model_config = conf
             .models
@@ -94,12 +97,16 @@ impl Whisper {
             _vad_temp_file = None;
         }
 
+        // Disable progress printing
         params.set_print_special(false);
         params.set_print_progress(false);
         params.set_print_realtime(false);
         params.set_print_timestamps(false);
+
+        // Disable token timestamps
         params.set_token_timestamps(false);
 
+        // Set temperature
         params.set_temperature(conf.temperature.unwrap_or(0.0));
 
         params.set_language(Some(self.lang.as_str()));
