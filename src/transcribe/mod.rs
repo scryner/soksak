@@ -1,4 +1,5 @@
 pub mod whisper_cpp;
+#[cfg(feature = "apple")]
 pub mod whisperkit;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

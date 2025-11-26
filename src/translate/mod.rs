@@ -1,3 +1,4 @@
+#[cfg(feature = "apple")]
 pub mod apple;
 pub mod llm;
 
@@ -33,7 +34,7 @@ pub struct FilterResponse {
 }
 
 pub async fn process_translation(
-    source_lang: &Language,
+    _source_lang: &Language,
     translate_config: &Translate,
     edit_config: Option<&Edit>,
     segments: Vec<TranscriptSegment>,
@@ -62,12 +63,14 @@ pub async fn process_translation(
                 Some(model_name),
             )
         }
+        #[cfg(feature = "apple")]
         TranslateEngine::Apple { .. } => (None, None),
     };
 
     // Determine window size
     let window_size = match &translate_config.engine {
         TranslateEngine::LLM { window, .. } => window.unwrap_or(100),
+        #[cfg(feature = "apple")]
         TranslateEngine::Apple { window } => window.unwrap_or(100),
     };
 
@@ -103,10 +106,11 @@ pub async fn process_translation(
                     unreachable!("LLM client should be initialized for LLM engine");
                 }
             }
+            #[cfg(feature = "apple")]
             TranslateEngine::Apple { .. } => {
-                let source_lang = match source_lang {
+                let source_lang = match _source_lang {
                     Language::Auto => None,
-                    _ => Some(source_lang.to_string()),
+                    _ => Some(_source_lang.to_string()),
                 };
 
                 apple::translate_batch(

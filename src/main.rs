@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 
 use crate::config::{TranscriptionEngine, WhisperConfig};
 use crate::transcribe::whisper_cpp::Whisper;
+#[cfg(feature = "apple")]
 use crate::transcribe::whisperkit::WhisperKit;
 
 #[derive(Parser)]
@@ -108,6 +109,7 @@ async fn main() -> anyhow::Result<()> {
                         .transcribe(&input_path, &whisper_conf, &mut pb)
                         .context("Failed to transcribe with WhisperCpp")?
                 }
+                #[cfg(feature = "apple")]
                 TranscriptionEngine::Whisperkit => {
                     let lang_str = if lang == Language::Auto {
                         None

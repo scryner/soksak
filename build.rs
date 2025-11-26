@@ -4,7 +4,7 @@ use std::process::Command;
 
 fn main() {
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
-    if target_os == "macos" {
+    if target_os == "macos" && env::var("CARGO_FEATURE_APPLE").is_ok() {
         println!("cargo:rerun-if-changed=src/translate/apple_bridge.swift");
         println!("cargo:rerun-if-changed=src/transcribe/swift/Sources/SoksakBridge/Bridge.swift");
 

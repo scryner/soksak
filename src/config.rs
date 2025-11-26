@@ -357,6 +357,7 @@ pub struct AppConfig {
 #[serde(rename_all = "snake_case")]
 pub enum TranscriptionEngine {
     WhisperCpp,
+    #[cfg(feature = "apple")]
     Whisperkit,
 }
 
@@ -425,6 +426,7 @@ pub enum TranslateEngine {
         system_prompt: Option<String>,
         window: Option<usize>, // default size: 100
     },
+    #[cfg(feature = "apple")]
     Apple {
         window: Option<usize>, // default size: 100
     },
