@@ -367,6 +367,70 @@ pub struct TranscriptionModelConfig {
     pub model: String,
 }
 
+impl TranscriptionModelConfig {
+    pub async fn resolve_model_path(&self) -> anyhow::Result<PathBuf> {
+        let model_path = PathBuf::from(&self.model);
+        if model_path.is_absolute() || model_path.starts_with("/") {
+            if model_path.exists() {
+                return Ok(model_path);
+            } else {
+                anyhow::bail!("Model file not found at {:?}", model_path);
+            }
+        }
+
+        let home = dirs::home_dir().context("Could not find home directory")?;
+        let base_dir = home.join(".soksak/models");
+
+        match self.engine {
+            TranscriptionEngine::WhisperCpp => {
+                let model_dir = base_dir.join("whisper_cpp");
+                let model_filename = format!("ggml-{}.bin", self.model);
+                let model_path = model_dir.join(&model_filename);
+
+                if !model_path.exists() {
+                    println!("Model not found at {:?}. Downloading...", model_path);
+                    std::fs::create_dir_all(&model_dir)?;
+                    let url = format!(
+                        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}",
+                        model_filename
+                    );
+                    download_file(&url, &model_path).await?;
+                    println!("Downloaded model to {:?}", model_path);
+                }
+
+                Ok(model_path)
+            }
+            #[cfg(feature = "apple")]
+            TranscriptionEngine::Whisperkit => {
+                let model_dir = base_dir.join("whisperkit");
+                let model_path = model_dir.join(&self.model);
+
+                if !model_path.exists() {
+                    // For WhisperKit, we don't download automatically yet, but we expect it to be there
+                    // or we can just return the path and let the bridge handle it if it can download.
+                    // But the requirement says "automatically find in ~/.soksak/models/whisperkit".
+                    // If not found, we might want to warn or just return the path.
+                    // The user said: "whisperkit의 경우 기본적으로 위와 같은 일을 해주므로 별도로 다운로드 로직을 처리할 필요는 없음. 다만, 모델이 ~/.soksak/models/whisperkit 에 저장되고 찾을 수 있도록 수정되어야 함"
+                    // So we just return the path.
+                }
+                Ok(model_path)
+            }
+        }
+    }
+}
+
+async fn download_file(url: &str, path: &PathBuf) -> anyhow::Result<()> {
+    let response = reqwest::get(url).await?;
+    if !response.status().is_success() {
+        anyhow::bail!("Failed to download model: {}", response.status());
+    }
+
+    let content = response.bytes().await?;
+    let mut file = std::fs::File::create(path)?;
+    std::io::copy(&mut content.as_ref(), &mut file)?;
+    Ok(())
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct TranscriptionConfig {
     pub models: HashMap<Language, TranscriptionModelConfig>,

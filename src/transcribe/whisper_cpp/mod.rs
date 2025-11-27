@@ -38,7 +38,7 @@ const DEFAULT_BEAM_SIZE: u32 = 5;
 const DEFAULT_PATIENCE: f32 = 1.0;
 
 impl Whisper {
-    pub fn new(conf: &TranscriptionConfig, lang: Language) -> Result<Self> {
+    pub async fn new(conf: &TranscriptionConfig, lang: Language) -> Result<Self> {
         // Disable whisper.cpp and GGML internal logging
         whisper_rs::install_logging_hooks();
 
@@ -48,9 +48,11 @@ impl Whisper {
             .get(&lang)
             .ok_or_else(|| anyhow!("Model not configured for language: {:?}", lang))?;
 
+        let model_path = model_config.resolve_model_path().await?;
+
         // make whisper context
         let param = WhisperContextParameters::default();
-        let ctx = WhisperContext::new_with_params(&model_config.model, param)?;
+        let ctx = WhisperContext::new_with_params(model_path.to_str().unwrap(), param)?;
 
         Ok(Self { ctx, lang })
     }

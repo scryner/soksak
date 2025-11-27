@@ -88,7 +88,6 @@ impl Drop for WhisperKit {
 }
 
 impl WhisperKit {
-    #[allow(dead_code)]
     pub fn new(model_path: &str, lang: Option<&str>) -> Self {
         let model_path_c = CString::new(model_path).unwrap();
         let lang_c = lang.map(|l| CString::new(l).unwrap());
@@ -104,6 +103,7 @@ impl WhisperKit {
         }
     }
 
+    #[allow(dead_code)]
     pub fn new_with_model_name(model_name: &str, lang: Option<&str>) -> Self {
         let model_name_c = CString::new(model_name).unwrap();
         let lang_c = lang.map(|l| CString::new(l).unwrap());
@@ -126,7 +126,6 @@ impl WhisperKit {
         pb: &mut indicatif::ProgressBar,
     ) -> Result<Vec<TranscriptSegment>> {
         // let audio = ffmpeg_decoder::file(audio)?;
-
         let audio_path = audio
             .as_ref()
             .to_str()

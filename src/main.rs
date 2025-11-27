@@ -104,6 +104,7 @@ async fn main() -> anyhow::Result<()> {
             let segments = match &model_config.engine {
                 TranscriptionEngine::WhisperCpp => {
                     let mut whisper = Whisper::new(&app_config.transcription, lang.clone())
+                        .await
                         .context("Failed to create Whisper instance")?;
 
                     whisper
@@ -117,7 +118,8 @@ async fn main() -> anyhow::Result<()> {
                     } else {
                         Some(lang.as_str())
                     };
-                    let whisperkit = WhisperKit::new_with_model_name(&model_config.model, lang_str);
+                    let model_path = model_config.resolve_model_path().await?;
+                    let whisperkit = WhisperKit::new(model_path.to_str().unwrap(), lang_str);
                     whisperkit
                         .transcribe(&input_path, &whisper_conf, &mut pb)
                         .context("Failed to transcribe with WhisperKit")?
