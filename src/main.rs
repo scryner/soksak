@@ -33,9 +33,9 @@ enum Commands {
         /// Input video file
         input: PathBuf,
 
-        /// Configuration file for run options
+        /// Configuration profile or file path
         #[arg(short, long)]
-        conf: Option<PathBuf>,
+        profile: Option<String>,
 
         /// Input language (default: auto)
         #[arg(short, long, default_value = "auto")]
@@ -47,9 +47,9 @@ enum Commands {
         /// Input video file: MUST BE json from 'Run' command
         input: PathBuf,
 
-        /// Configuration file for run options
+        /// Configuration profile or file path
         #[arg(short, long)]
-        conf: PathBuf,
+        profile: String,
 
         /// Input language (default: auto)
         #[arg(short, long, default_value = "auto")]
@@ -57,15 +57,37 @@ enum Commands {
     },
 }
 
+fn resolve_profile_path(profile: &str) -> anyhow::Result<PathBuf> {
+    if profile.starts_with("~/") {
+        let home = dirs::home_dir().context("Could not find home directory")?;
+        return Ok(home.join(&profile[2..]));
+    }
+
+    let path = PathBuf::from(profile);
+    if path.is_absolute() || profile.starts_with("./") || profile.starts_with("../") {
+        return Ok(path);
+    }
+
+    let home = dirs::home_dir().context("Could not find home directory")?;
+    Ok(home
+        .join(".soksak/profiles")
+        .join(format!("{}.yaml", profile)))
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Run { input, conf, lang } => {
+        Commands::Run {
+            input,
+            profile,
+            lang,
+        } => {
             let app_config = config::load_app_config().context("Failed to load app config")?;
 
-            let run_config = if let Some(conf_path) = conf {
+            let run_config = if let Some(p) = profile {
+                let conf_path = resolve_profile_path(&p)?;
                 Some(config::load_run_config(&conf_path).context("Failed to load run config")?)
             } else {
                 None
@@ -138,10 +160,12 @@ async fn main() -> anyhow::Result<()> {
                 if let Some(tc) = rc.translation {
                     println!("Translating...");
                     let pb_trans = indicatif::ProgressBar::new(segments.len() as u64);
-                    pb_trans.set_style(indicatif::ProgressStyle::default_bar()
-                        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
-                        .unwrap()
-                        .progress_chars("#>-"));
+                    pb_trans.set_style(
+                        indicatif::ProgressStyle::default_bar()
+                            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
+                            .unwrap()
+                            .progress_chars("#>-"),
+                    );
                     pb_trans.enable_steady_tick(Duration::from_millis(100));
 
                     let translated_segments = translate::process_translation(
@@ -168,14 +192,19 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Commands::Translate { input, conf, lang } => {
+        Commands::Translate {
+            input,
+            profile,
+            lang,
+        } => {
             println!("Translating from transcript: {:?}", input);
 
             // 1. Load App Config
             let app_config = config::load_app_config()?;
 
             // 2. Load Run Config (Required)
-            let run_config = config::load_run_config(&conf)?;
+            let conf_path = resolve_profile_path(&profile)?;
+            let run_config = config::load_run_config(&conf_path)?;
             let tc = run_config.translation.ok_or_else(|| {
                 anyhow::anyhow!("Translation config is required for translate command")
             })?;
