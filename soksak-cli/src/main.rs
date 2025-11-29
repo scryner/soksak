@@ -1,9 +1,4 @@
-mod config;
-mod ffmpeg_decoder;
-mod llm;
-mod output;
-mod transcribe;
-mod translate;
+use soksak_lib::{config, output, transcribe, translate};
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
@@ -13,10 +8,10 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use crate::config::{TranscriptionEngine, WhisperConfig};
-use crate::transcribe::whisper_cpp::Whisper;
+use config::{TranscriptionEngine, WhisperConfig};
+use transcribe::whisper_cpp::Whisper;
 #[cfg(feature = "apple")]
-use crate::transcribe::whisperkit::WhisperKit;
+use transcribe::whisperkit::WhisperKit;
 
 #[derive(Parser)]
 #[command(name = "soksak")]

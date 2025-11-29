@@ -1,0 +1,18 @@
+[package]
+name = "soksak-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+soksak-lib = { path = "../soksak-lib" }
+clap = { version = "4.5.51", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+anyhow = "1.0"
+indicatif = "0.17"
+serde_json = "1.0"
+dirs = "5.0"
+
+[features]
+default = []
+apple = ["soksak-lib/apple"]
+full = ["soksak-lib/full"]
