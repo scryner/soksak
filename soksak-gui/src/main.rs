@@ -1,5 +1,7 @@
 use gpui::*;
 
+actions!(soksak_gui, [Quit]);
+
 struct Workspace {
     // We can add state here later
 }
@@ -7,12 +9,13 @@ struct Workspace {
 // ... existing code ...
 
 impl Render for Workspace {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .size_full()
             .flex()
             .bg(rgb(0x1e1e1e)) // Dark background
             .text_color(rgb(0xffffff))
+            .key_context("Workspace")
             .child(
                 // Left Panel
                 div()
@@ -462,5 +465,8 @@ fn main() {
             |_, cx| cx.new(|_| Workspace {}),
         )
         .expect("failed to open window");
+
+        cx.on_action(|_: &Quit, cx| cx.quit());
+        cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
     });
 }
