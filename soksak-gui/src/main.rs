@@ -1,4 +1,4 @@
-use gpui::{VisualContext, *};
+use gpui::*;
 
 struct Workspace {
     // We can add state here later
@@ -24,14 +24,8 @@ impl Render for Workspace {
                     .border_r_1()
                     .border_color(rgb(0x333333))
                     .child(
-                        // Window Controls (Mac style placeholder)
-                        div().h_10().flex().items_center().px_4().child(
-                            div().flex().gap_2().children(vec![
-                                div().w_3().h_3().rounded_full().bg(rgb(0xff5f56)), // Red
-                                div().w_3().h_3().rounded_full().bg(rgb(0xffbd2e)), // Yellow
-                                div().w_3().h_3().rounded_full().bg(rgb(0x27c93f)), // Green
-                            ]),
-                        ),
+                        // Spacer for native traffic lights
+                        div().h_10(),
                     )
                     .child(
                         // Status Section
@@ -459,6 +453,10 @@ fn main() {
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
+                titlebar: Some(TitlebarOptions {
+                    appears_transparent: true,
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             |_, cx| cx.new(|_| Workspace {}),
