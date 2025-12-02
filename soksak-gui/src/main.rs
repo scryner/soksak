@@ -1,4 +1,5 @@
 use gpui::*;
+use rust_i18n::t;
 
 actions!(soksak_gui, [Quit]);
 
@@ -31,16 +32,7 @@ impl Render for Workspace {
                         div().h_10(),
                     )
                     .child(
-                        // Status Section
-                        div()
-                            .px_4()
-                            .py_2()
-                            .child("STATUS")
-                            .text_xs()
-                            .text_color(rgb(0x888888)),
-                    )
-                    .child(
-                        // "Waiting" Item (Active)
+                        // "All" Item (Active)
                         div()
                             .mx_2()
                             .px_2()
@@ -64,7 +56,7 @@ impl Render for Workspace {
                                             .rounded_full()
                                             .border_color(rgb(0xaaaaaa)),
                                     )
-                                    .child("대기 중"),
+                                    .child(SharedString::from(t!("list.all"))),
                             )
                             .child(
                                 div()
@@ -95,7 +87,29 @@ impl Render for Workspace {
                                     .rounded_full()
                                     .border_color(rgb(0x666666)),
                             )
-                            .child("진행 중"),
+                            .child(SharedString::from(t!("list.inprogress"))),
+                    )
+                    .child(
+                        // "Queued" Item
+                        div()
+                            .mx_2()
+                            .px_2()
+                            .py_1()
+                            .rounded_md()
+                            .flex()
+                            .gap_2()
+                            .items_center()
+                            .text_color(rgb(0xaaaaaa))
+                            .child(
+                                // Icon placeholder
+                                div()
+                                    .w_4()
+                                    .h_4()
+                                    .border_1()
+                                    .rounded_full()
+                                    .border_color(rgb(0x666666)),
+                            )
+                            .child(SharedString::from(t!("list.queued"))),
                     )
                     .child(
                         // "Done" Item
@@ -117,21 +131,7 @@ impl Render for Workspace {
                                     .rounded_full()
                                     .border_color(rgb(0x666666)),
                             )
-                            .child("완료"),
-                    )
-                    .child(
-                        // "All" Item (Requested)
-                        div()
-                            .mt_4()
-                            .mx_2()
-                            .px_2()
-                            .py_1()
-                            .rounded_md()
-                            .flex()
-                            .gap_2()
-                            .items_center()
-                            .text_color(rgb(0xaaaaaa))
-                            .child("전체"),
+                            .child(SharedString::from(t!("list.completed"))),
                     ),
             )
             .child(
@@ -156,7 +156,7 @@ impl Render for Workspace {
                                 div()
                                     .text_lg()
                                     .font_weight(FontWeight::BOLD)
-                                    .child("대기 중"),
+                                    .child(SharedString::from(t!("list.all"))),
                             )
                             .child(
                                 div()
@@ -170,7 +170,7 @@ impl Render for Workspace {
                                             .rounded_md()
                                             .bg(rgb(0x333333))
                                             .text_sm()
-                                            .child("시작"),
+                                            .child(SharedString::from(t!("btn.start"))),
                                     )
                                     .child(
                                         // Profile Dropdown
@@ -276,7 +276,7 @@ impl Render for Workspace {
                                                 div()
                                                     .text_sm()
                                                     .text_color(rgb(0xaaaaaa))
-                                                    .child("대기 중"),
+                                                    .child(SharedString::from(t!("list.queued"))),
                                             )
                                             .child(
                                                 div().w_1().h_4().bg(rgb(0xaaaaaa)), // Kebab menu placeholder
@@ -341,7 +341,7 @@ impl Render for Workspace {
                                                 div()
                                                     .text_sm()
                                                     .text_color(rgb(0xaaaaaa))
-                                                    .child("대기 중"),
+                                                    .child(SharedString::from(t!("list.queued"))),
                                             )
                                             .child(div().w_1().h_4().bg(rgb(0xaaaaaa))),
                                     ),
@@ -404,7 +404,7 @@ impl Render for Workspace {
                                                 div()
                                                     .text_sm()
                                                     .text_color(rgb(0xaaaaaa))
-                                                    .child("대기 중"),
+                                                    .child(SharedString::from(t!("list.queued"))),
                                             )
                                             .child(div().w_1().h_4().bg(rgb(0xaaaaaa))),
                                     ),
@@ -445,12 +445,14 @@ impl Render for Workspace {
     }
 }
 
+rust_i18n::i18n!("assets");
+
 fn main() {
-    // Application::new().run(|cx| {
-    //     cx.open_window(WindowOptions::default(), |cx, _window| {
-    //         cx.new_view(|_cx| Workspace {})
-    //     });
-    // });
+    // Get system locale and set it as application locale
+    let locale = sys_locale::get_locale().unwrap_or("en_US".to_string());
+    rust_i18n::set_locale(&locale);
+
+    // Start the application
     Application::new().run(|cx: &mut App| {
         let bounds = Bounds::centered(None, size(px(1080.), px(720.)), cx);
         cx.open_window(

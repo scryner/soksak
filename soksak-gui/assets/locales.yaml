@@ -1,0 +1,19 @@
+_version: 2
+list.all:
+  en: All
+  ko: 전체
+list.queued:
+  en: Queued
+  ko: 대기 중
+list.inprogress:
+  en: In Progress
+  ko: 진행 중
+list.completed:
+  en: Completed
+  ko: 완료
+btn.start:
+  en: Start
+  ko: 시작
+btn.cancel:
+  en: Cancel
+  ko: 취소
