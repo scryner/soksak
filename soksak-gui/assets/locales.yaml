@@ -11,6 +11,9 @@ list.inprogress:
 list.completed:
   en: Completed
   ko: 완료
+list.failed:
+  en: Failed
+  ko: 실패
 btn.start:
   en: Start
   ko: 시작

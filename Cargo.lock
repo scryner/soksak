@@ -5530,6 +5530,7 @@ version = "0.1.0"
 dependencies = [
  "gpui",
  "rust-i18n",
+ "serde",
  "sys-locale",
 ]
 
