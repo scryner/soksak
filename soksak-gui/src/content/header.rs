@@ -3,6 +3,7 @@ use gpui::*;
 use rust_i18n::t;
 
 use crate::content::job_list::JobList;
+use crate::icon::Icon;
 
 pub struct Header {
     job_list: Entity<JobList>,
@@ -92,9 +93,7 @@ impl Render for Header {
                             .gap_1()
                             .cursor_pointer()
                             .child("Profile: Interview")
-                            .child(
-                                div().text_xs().text_color(rgb(0xaaaaaa)).child("v"), // Simple chevron representation
-                            ),
+                            .child(Icon::ChevronDown.render().text_color(rgb(0xaaaaaa))),
                     )
                     .child(
                         // Settings Button

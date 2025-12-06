@@ -8,6 +8,7 @@ pub enum Icon {
     ProgressActivity,
     PauseCircle,
     CheckCircle,
+    ChevronDown,
 }
 
 impl Icon {
@@ -19,6 +20,7 @@ impl Icon {
             Icon::ProgressActivity => "icons/progress_activity.svg".into(),
             Icon::PauseCircle => "icons/pause_circle.svg".into(),
             Icon::CheckCircle => "icons/check_circle.svg".into(),
+            Icon::ChevronDown => "icons/chevron-down.svg".into(),
         }
     }
 
