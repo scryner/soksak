@@ -41,12 +41,17 @@ impl Render for Job {
                         div()
                             .w_10()
                             .h_10()
+                            .flex_shrink_0()
                             .rounded_md()
-                            .bg(rgb(0x333333))
+                            .bg(rgb(0x6b7280)) // Gray 500
                             .flex()
                             .items_center()
                             .justify_center()
-                            .child(div().w_6().h_6().border_1().border_color(rgb(0xaaaaaa))),
+                            .child(
+                                crate::icon::Icon::FileVideo
+                                    .render()
+                                    .text_color(rgb(0xffffff)),
+                            ),
                     )
                     .child(
                         div()
@@ -73,7 +78,9 @@ impl Render for Job {
                             .child(SharedString::from(self.status)),
                     )
                     .child(
-                        div().w_1().h_4().bg(rgb(0xaaaaaa)), // Kebab menu placeholder
+                        crate::icon::Icon::EllipsisVertical
+                            .render()
+                            .text_color(rgb(0xaaaaaa)),
                     ),
             )
     }

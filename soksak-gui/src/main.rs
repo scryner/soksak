@@ -2,7 +2,9 @@ use gpui::*;
 
 use crate::socsak_app::SoksakApp;
 
+pub mod assets;
 mod content;
+pub mod icon;
 mod sidebar;
 mod socsak_app;
 
@@ -15,25 +17,29 @@ fn main() {
     rust_i18n::set_locale(&locale);
 
     // Start the application
-    Application::new().run(|cx: &mut App| {
-        let bounds = Bounds::centered(None, size(px(1080.), px(720.)), cx);
+    Application::new()
+        .with_assets(crate::assets::Assets::new(std::path::PathBuf::from(
+            "soksak-gui/assets",
+        )))
+        .run(|cx: &mut App| {
+            let bounds = Bounds::centered(None, size(px(1080.), px(720.)), cx);
 
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                titlebar: Some(TitlebarOptions {
-                    appears_transparent: true,
+            cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    titlebar: Some(TitlebarOptions {
+                        appears_transparent: true,
+                        ..Default::default()
+                    }),
                     ..Default::default()
-                }),
-                ..Default::default()
-            },
-            |_, app| app.new(|inner| SoksakApp::new(inner)),
-        )
-        .expect("failed to open window");
+                },
+                |_, app| app.new(|inner| SoksakApp::new(inner)),
+            )
+            .expect("failed to open window");
 
-        cx.on_action(|_: &Quit, cx| cx.quit());
-        cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
+            cx.on_action(|_: &Quit, cx| cx.quit());
+            cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
 
-        cx.activate(true);
-    });
+            cx.activate(true);
+        });
 }

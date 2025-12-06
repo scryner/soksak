@@ -5562,6 +5562,7 @@ dependencies = [
 name = "soksak-gui"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "gpui",
  "rfd",
  "rust-i18n",
