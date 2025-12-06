@@ -3,12 +3,18 @@ use gpui::prelude::*;
 use gpui::*;
 use rust_i18n::t;
 
+pub enum JobEvent {
+    MenuOpen(Point<Pixels>),
+}
+
 pub struct Job {
     pub(crate) name: SharedString,
     pub(crate) profile: SharedString,
     pub(crate) status: Status,
     pub(crate) selected: bool,
 }
+
+impl EventEmitter<JobEvent> for Job {}
 
 impl Job {
     pub fn new(app: &mut App, name: &str, profile: &str, status: Status) -> Entity<Self> {
@@ -27,10 +33,14 @@ impl Job {
         self.selected = selected;
         cx.notify();
     }
+
+    pub fn toggle_menu(&mut self, event: &ClickEvent, cx: &mut Context<Self>) {
+        cx.emit(JobEvent::MenuOpen(event.position()));
+    }
 }
 
 impl Render for Job {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let bg_color = if self.selected {
             rgb(0x28324a)
         } else {
@@ -96,9 +106,19 @@ impl Render for Job {
                             .child(SharedString::from(self.status)),
                     )
                     .child(
-                        crate::icon::Icon::EllipsisVertical
-                            .render()
-                            .text_color(rgb(0xaaaaaa)),
+                        div().child(
+                            div()
+                                .id("menu-button")
+                                .cursor_pointer()
+                                .child(
+                                    crate::icon::Icon::EllipsisVertical
+                                        .render()
+                                        .text_color(rgb(0xaaaaaa)),
+                                )
+                                .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
+                                    this.toggle_menu(event, cx)
+                                })),
+                        ),
                     ),
             )
     }
