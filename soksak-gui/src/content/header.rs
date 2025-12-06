@@ -31,14 +31,16 @@ impl Render for Header {
                     .flex()
                     .gap_2()
                     .child(
-                        // Start Button
+                        // Add File Button
                         div()
                             .px_3()
                             .py_1()
                             .rounded_md()
                             .bg(rgb(0x333333))
                             .text_sm()
-                            .child(SharedString::from(t!("btn.start"))),
+                            .cursor_pointer()
+                            // Hover effect could be added here later
+                            .child(div().text_color(rgb(0xaaaaaa)).child("+")),
                     )
                     .child(
                         // Profile Dropdown
@@ -51,8 +53,11 @@ impl Render for Header {
                             .flex()
                             .items_center()
                             .gap_1()
-                            .child(div().text_color(rgb(0xaaaaaa)).child("+"))
-                            .child("Profile: Interview"),
+                            .cursor_pointer()
+                            .child("Profile: Interview")
+                            .child(
+                                div().text_xs().text_color(rgb(0xaaaaaa)).child("v"), // Simple chevron representation
+                            ),
                     )
                     .child(
                         // Settings Button
