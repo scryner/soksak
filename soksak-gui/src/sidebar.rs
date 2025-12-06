@@ -41,13 +41,10 @@ impl Render for Sidebar {
                             .gap_2()
                             .items_center()
                             .child(
-                                // Icon placeholder
-                                div()
-                                    .w_4()
-                                    .h_4()
-                                    .border_1()
-                                    .rounded_full()
-                                    .border_color(rgb(0xaaaaaa)),
+                                crate::icon::Icon::List
+                                    .render()
+                                    .size_5()
+                                    .text_color(rgb(0xffffff)),
                             )
                             .child(SharedString::from(t!("list.all"))),
                     )
@@ -72,13 +69,10 @@ impl Render for Sidebar {
                     .items_center()
                     .text_color(rgb(0xaaaaaa))
                     .child(
-                        // Icon placeholder
-                        div()
-                            .w_4()
-                            .h_4()
-                            .border_1()
-                            .rounded_full()
-                            .border_color(rgb(0x666666)),
+                        crate::icon::Icon::ProgressActivity
+                            .render()
+                            .size_5()
+                            .text_color(rgb(0xaaaaaa)),
                     )
                     .child(SharedString::from(t!("list.inprogress"))),
             )
@@ -94,13 +88,10 @@ impl Render for Sidebar {
                     .items_center()
                     .text_color(rgb(0xaaaaaa))
                     .child(
-                        // Icon placeholder
-                        div()
-                            .w_4()
-                            .h_4()
-                            .border_1()
-                            .rounded_full()
-                            .border_color(rgb(0x666666)),
+                        crate::icon::Icon::PauseCircle
+                            .render()
+                            .size_5()
+                            .text_color(rgb(0xaaaaaa)),
                     )
                     .child(SharedString::from(t!("list.queued"))),
             )
@@ -116,13 +107,10 @@ impl Render for Sidebar {
                     .items_center()
                     .text_color(rgb(0xaaaaaa))
                     .child(
-                        // Icon placeholder
-                        div()
-                            .w_4()
-                            .h_4()
-                            .border_1()
-                            .rounded_full()
-                            .border_color(rgb(0x666666)),
+                        crate::icon::Icon::CheckCircle
+                            .render()
+                            .size_5()
+                            .text_color(rgb(0xaaaaaa)),
                     )
                     .child(SharedString::from(t!("list.completed"))),
             )
