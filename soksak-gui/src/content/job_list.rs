@@ -1,4 +1,5 @@
 use gpui::*;
+use std::path::PathBuf;
 
 use crate::content::job::{Job, Status};
 
@@ -16,6 +17,22 @@ impl JobList {
                 Job::new(inner, "C.mp4", "Profile 3", Status::Queued),
             ],
         })
+    }
+
+    pub fn add_job(&mut self, cx: &mut Context<Self>, path: PathBuf) {
+        let name = path
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        let job = cx.new(|_cx| Job {
+            name: name.into(),
+            profile: "Default".into(),
+            status: Status::Queued,
+        });
+
+        self.jobs.push(job);
+        cx.notify();
     }
 }
 

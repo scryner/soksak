@@ -2,9 +2,9 @@ use gpui::*;
 use rust_i18n::t;
 
 pub struct Job {
-    name: SharedString,
-    profile: SharedString,
-    status: Status,
+    pub(crate) name: SharedString,
+    pub(crate) profile: SharedString,
+    pub(crate) status: Status,
 }
 
 impl Job {

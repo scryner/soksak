@@ -15,10 +15,13 @@ pub struct Content {
 
 impl Content {
     pub fn new(app: &mut App) -> Entity<Self> {
-        app.new(|inner| Self {
-            header: Header::new(inner),
-            bottombar: BottomBar::new(inner),
-            job_list: JobList::new(inner),
+        app.new(|inner| {
+            let job_list = JobList::new(inner);
+            Self {
+                header: Header::new(inner, job_list.clone()),
+                bottombar: BottomBar::new(inner),
+                job_list,
+            }
         })
     }
 }

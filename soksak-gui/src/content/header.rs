@@ -1,16 +1,21 @@
+use gpui::prelude::*;
 use gpui::*;
 use rust_i18n::t;
 
-pub struct Header;
+use crate::content::job_list::JobList;
+
+pub struct Header {
+    job_list: Entity<JobList>,
+}
 
 impl Header {
-    pub fn new(app: &mut App) -> Entity<Self> {
-        app.new(|_| Self)
+    pub fn new(app: &mut App, job_list: Entity<JobList>) -> Entity<Self> {
+        app.new(|_| Self { job_list })
     }
 }
 
 impl Render for Header {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Header
         div()
             .h(px(56.0))
@@ -40,6 +45,30 @@ impl Render for Header {
                             .text_sm()
                             .cursor_pointer()
                             // Hover effect could be added here later
+                            .id("add_file_btn")
+                            .on_click(cx.listener(|this, _event, _window, cx| {
+                                let job_list = this.job_list.clone();
+                                cx.spawn(|_, cx: &mut AsyncApp| {
+                                    let mut cx: AsyncApp = cx.clone();
+                                    async move {
+                                        let file = rfd::AsyncFileDialog::new()
+                                            .add_filter("Video", &["mp4", "avi"])
+                                            .pick_file()
+                                            .await;
+
+                                        if let Some(file) = file {
+                                            let path = file.path().to_path_buf();
+                                            // cx is owned AsyncApp here?
+                                            job_list
+                                                .update(&mut cx, |job_list, cx| {
+                                                    job_list.add_job(cx, path);
+                                                })
+                                                .ok();
+                                        }
+                                    }
+                                })
+                                .detach();
+                            }))
                             .child(div().text_color(rgb(0xaaaaaa)).child("+")),
                     )
                     .child(
