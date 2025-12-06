@@ -5,7 +5,7 @@ use crate::content::{bottombar::BottomBar, header::Header, job_list::JobList};
 mod bottombar;
 mod header;
 mod job;
-mod job_list;
+pub mod job_list;
 
 pub struct Content {
     header: Entity<Header>,
@@ -14,14 +14,11 @@ pub struct Content {
 }
 
 impl Content {
-    pub fn new(app: &mut App) -> Entity<Self> {
-        app.new(|inner| {
-            let job_list = JobList::new(inner);
-            Self {
-                header: Header::new(inner, job_list.clone()),
-                bottombar: BottomBar::new(inner),
-                job_list,
-            }
+    pub fn new(app: &mut App, job_list: Entity<JobList>) -> Entity<Self> {
+        app.new(|inner| Self {
+            header: Header::new(inner, job_list.clone()),
+            bottombar: BottomBar::new(inner),
+            job_list,
         })
     }
 }

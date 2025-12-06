@@ -9,9 +9,10 @@ pub struct SoksakApp {
 
 impl SoksakApp {
     pub fn new(app: &mut App) -> Self {
+        let job_list = crate::content::job_list::JobList::new(app);
         Self {
-            sidebar: Sidebar::new(app),
-            content: Content::new(app),
+            sidebar: Sidebar::new(app, job_list.clone()),
+            content: Content::new(app, job_list),
         }
     }
 }

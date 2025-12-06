@@ -16,6 +16,14 @@ impl Header {
 
 impl Render for Header {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let job_list = self.job_list.read(cx);
+        let title = match job_list.filter {
+            crate::content::job_list::Filter::All => t!("list.all"),
+            crate::content::job_list::Filter::Processing => t!("list.inprogress"),
+            crate::content::job_list::Filter::Queued => t!("list.queued"),
+            crate::content::job_list::Filter::Completed => t!("list.completed"),
+        };
+
         // Header
         div()
             .h(px(56.0))
@@ -29,7 +37,7 @@ impl Render for Header {
                 div()
                     .text_lg()
                     .font_weight(FontWeight::BOLD)
-                    .child(SharedString::from(t!("list.all"))),
+                    .child(SharedString::from(title)),
             )
             .child(
                 div()

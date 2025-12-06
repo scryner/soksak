@@ -1,3 +1,5 @@
+use gpui::InteractiveElement;
+use gpui::prelude::*;
 use gpui::*;
 use rust_i18n::t;
 
@@ -5,6 +7,7 @@ pub struct Job {
     pub(crate) name: SharedString,
     pub(crate) profile: SharedString,
     pub(crate) status: Status,
+    pub(crate) selected: bool,
 }
 
 impl Job {
@@ -16,16 +19,31 @@ impl Job {
             name,
             profile,
             status,
+            selected: false,
         })
+    }
+
+    pub fn set_selected(&mut self, selected: bool, cx: &mut Context<Self>) {
+        self.selected = selected;
+        cx.notify();
     }
 }
 
 impl Render for Job {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        let bg_color = if self.selected {
+            rgb(0x28324a)
+        } else {
+            rgb(0x252526)
+        };
+
         div()
             .p_4()
             .rounded_lg()
-            .bg(rgb(0x252526))
+            .bg(bg_color)
+            .when(!self.selected, |this| {
+                this.hover(|style| style.bg(rgb(0x37373d)))
+            })
             .border_1()
             .border_color(rgb(0x333333))
             .flex()
