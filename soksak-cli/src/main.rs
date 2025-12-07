@@ -13,6 +13,25 @@ use transcribe::whisper_cpp::Whisper;
 #[cfg(feature = "apple")]
 use transcribe::whisperkit::WhisperKit;
 
+use soksak_lib::progress::Progress;
+
+struct CliProgress(ProgressBar);
+
+impl Progress for CliProgress {
+    fn inc(&self, delta: u64) {
+        self.0.inc(delta);
+    }
+    fn set_position(&self, pos: u64) {
+        self.0.set_position(pos);
+    }
+    fn finish(&self) {
+        self.0.finish();
+    }
+    fn finish_with_message(&self, msg: &str) {
+        self.0.finish_with_message(msg.to_string());
+    }
+}
+
 #[derive(Parser)]
 #[command(name = "soksak")]
 #[command(about = "Video transcription and translation tool", long_about = None)]
@@ -100,7 +119,7 @@ async fn main() -> anyhow::Result<()> {
                 anyhow::anyhow!("No transcription model configured for language: {:?}", lang)
             })?;
 
-            let mut pb = indicatif::ProgressBar::new(100);
+            let pb = indicatif::ProgressBar::new(100);
             pb.set_style(
                 indicatif::ProgressStyle::default_bar()
                     .template(
@@ -124,8 +143,9 @@ async fn main() -> anyhow::Result<()> {
                         .await
                         .context("Failed to create Whisper instance")?;
 
+                    let pb_wrapper = CliProgress(pb.clone());
                     whisper
-                        .transcribe(&input_path, &whisper_conf, &mut pb)
+                        .transcribe(&input_path, &whisper_conf, &pb_wrapper)
                         .context("Failed to transcribe with WhisperCpp")?
                 }
                 #[cfg(feature = "apple")]
@@ -137,8 +157,9 @@ async fn main() -> anyhow::Result<()> {
                     };
                     let model_path = model_config.resolve_model_path().await?;
                     let whisperkit = WhisperKit::new(model_path.to_str().unwrap(), lang_str);
+                    let pb_wrapper = CliProgress(pb.clone());
                     whisperkit
-                        .transcribe(&input_path, &whisper_conf, &mut pb)
+                        .transcribe(&input_path, &whisper_conf, &pb_wrapper)
                         .context("Failed to transcribe with WhisperKit")?
                 }
                 #[allow(unused)]
@@ -168,13 +189,14 @@ async fn main() -> anyhow::Result<()> {
                     );
                     pb_trans.enable_steady_tick(Duration::from_millis(100));
 
+                    let pb_wrapper = CliProgress(pb_trans.clone());
                     let translated_segments = translate::process_translation(
                         &lang,
                         &tc.translate,
                         tc.edit.as_ref(),
                         segments,
                         &app_config,
-                        &pb_trans,
+                        &pb_wrapper,
                     )
                     .await?;
                     pb_trans.finish_with_message("Translation complete");
@@ -229,13 +251,14 @@ async fn main() -> anyhow::Result<()> {
             );
             pb_trans.enable_steady_tick(Duration::from_millis(100));
 
+            let pb_wrapper = CliProgress(pb_trans.clone());
             let translated_segments = translate::process_translation(
                 &lang,
                 &tc.translate,
                 tc.edit.as_ref(),
                 segments,
                 &app_config,
-                &pb_trans,
+                &pb_wrapper,
             )
             .await?;
             pb_trans.finish_with_message("Translation complete");

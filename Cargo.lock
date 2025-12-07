@@ -5674,7 +5674,6 @@ dependencies = [
  "dirs 5.0.1",
  "ffmpeg-sidecar",
  "hound",
- "indicatif",
  "log",
  "regex",
  "reqwest",

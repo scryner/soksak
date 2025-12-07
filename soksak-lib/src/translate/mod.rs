@@ -4,9 +4,9 @@ pub mod llm;
 
 use crate::config::{AppConfig, Edit, FilterConfig, Language, Translate, TranslateEngine};
 use crate::llm::{LlmClient, Message};
+use crate::progress::Progress;
 use crate::transcribe::TranscriptSegment;
 use anyhow::Result;
-use indicatif::ProgressBar;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TranslatedSegment {
@@ -39,7 +39,7 @@ pub async fn process_translation(
     edit_config: Option<&Edit>,
     segments: Vec<TranscriptSegment>,
     app_config: &AppConfig,
-    pb: &ProgressBar,
+    pb: &impl Progress,
 ) -> Result<Vec<TranslatedSegment>> {
     let mut translated_segments = Vec::new();
     let mut summary = String::from("No context yet.");

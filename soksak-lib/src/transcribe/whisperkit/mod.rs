@@ -1,11 +1,12 @@
 // use crate::ffmpeg_decoder;
 use crate::config::WhisperConfig;
+use crate::progress::Progress;
 use crate::transcribe::TranscriptSegment;
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_void};
 use std::path::Path;
-use std::sync::mpsc::{Sender, channel};
+use std::sync::mpsc::{channel, Sender};
 
 enum BridgeMessage {
     Segment(TranscriptSegment),
@@ -123,7 +124,7 @@ impl WhisperKit {
         &self,
         audio: P,
         conf: &WhisperConfig,
-        pb: &mut indicatif::ProgressBar,
+        pb: &impl Progress,
     ) -> Result<Vec<TranscriptSegment>> {
         // let audio = ffmpeg_decoder::file(audio)?;
         let audio_path = audio
@@ -190,6 +191,12 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    struct DummyProgress;
+    impl Progress for DummyProgress {
+        fn inc(&self, _delta: u64) {}
+        fn set_position(&self, _pos: u64) {}
+    }
+
     #[test]
     fn test_whisperkit_transcribe() {
         // Define paths relative to the project root
@@ -205,12 +212,12 @@ mod tests {
             return;
         }
 
-        let mut pb = indicatif::ProgressBar::new(0);
+        let pb = DummyProgress;
 
         // Try with local model first
         let whisper = WhisperKit::new_with_model_name(model_path, None);
         let conf = WhisperConfig::default();
-        let result = whisper.transcribe(&audio_path, &conf, &mut pb);
+        let result = whisper.transcribe(&audio_path, &conf, &pb);
 
         match result {
             Ok(segments) => {
@@ -225,7 +232,7 @@ mod tests {
                 println!("Attempting to download and use 'openai_whisper-tiny'...");
 
                 let whisper_tiny = WhisperKit::new_with_model_name("openai_whisper-tiny", None);
-                let result_tiny = whisper_tiny.transcribe(&audio_path, &conf, &mut pb);
+                let result_tiny = whisper_tiny.transcribe(&audio_path, &conf, &pb);
 
                 match result_tiny {
                     Ok(segments) => {

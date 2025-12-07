@@ -3,7 +3,7 @@ use std::{
     path::Path,
 };
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 
 use std::io::Write;
 use tempfile::NamedTempFile;
@@ -12,6 +12,7 @@ use whisper_rs::{FullParams, WhisperContext, WhisperContextParameters, WhisperVa
 use crate::{
     config::{Language, TranscriptionConfig, WhisperConfig},
     ffmpeg_decoder,
+    progress::Progress,
     transcribe::TranscriptSegment,
 };
 
@@ -23,7 +24,9 @@ unsafe extern "C" fn whisper_progress_callback(
 ) {
     if !user_data.is_null() {
         unsafe {
-            let pb = &*(user_data as *mut indicatif::ProgressBar);
+            // We expect user_data to be a pointer to a &dyn Progress fat pointer
+            let pb_ptr = user_data as *const &dyn Progress;
+            let pb = *pb_ptr;
             pb.set_position(progress as u64);
         }
     }
@@ -61,7 +64,7 @@ impl Whisper {
         &mut self,
         audio: P,
         conf: &WhisperConfig,
-        pb: &mut indicatif::ProgressBar,
+        pb: &impl Progress,
     ) -> Result<Vec<TranscriptSegment>> {
         // make parameters
         let mut params = FullParams::new(whisper_rs::SamplingStrategy::BeamSearch {
@@ -118,11 +121,15 @@ impl Whisper {
         }
 
         // Set the progress callback to update the provided ProgressBar
+        // We create a fat pointer reference and pass its address
+        let pb_dyn: &dyn Progress = pb;
+        let pb_ptr = &pb_dyn as *const &dyn Progress;
+
         unsafe {
             params.set_progress_callback(Some(std::mem::transmute(
                 whisper_progress_callback as *const (),
             )));
-            params.set_progress_callback_user_data(pb as *mut _ as *mut c_void);
+            params.set_progress_callback_user_data(pb_ptr as *mut c_void);
         }
 
         let audio = ffmpeg_decoder::read_file(audio)?;
