@@ -15,4 +15,4 @@ dirs = "5.0"
 [features]
 default = []
 apple = ["soksak-lib/apple"]
-full = ["soksak-lib/full"]
+full = ["soksak-lib/full", "apple"]

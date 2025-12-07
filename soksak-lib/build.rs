@@ -62,7 +62,10 @@ fn main() {
         // We need to find where the static lib is.
         // SwiftPM 5.9+ might put it in .build/release/libSoksakBridge.a or similar.
         // Let's assume standard layout.
-        let swift_build_dir = PathBuf::from(swift_package_dir).join(".build/release");
+        let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+        let swift_build_dir = PathBuf::from(manifest_dir)
+            .join(swift_package_dir)
+            .join(".build/release");
         println!("cargo:rustc-link-search={}", swift_build_dir.display());
         println!("cargo:rustc-link-lib=static=SoksakBridge");
         // WhisperKit dependencies
@@ -106,7 +109,7 @@ fn main() {
 
         println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
         println!(
-            "cargo:rustc-link-arg=-Wl,-rpath,/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx"
+            "cargo:rustc-link-arg=-Wl,-rpath,/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.5/macosx"
         );
     }
 }

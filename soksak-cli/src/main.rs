@@ -141,6 +141,11 @@ async fn main() -> anyhow::Result<()> {
                         .transcribe(&input_path, &whisper_conf, &mut pb)
                         .context("Failed to transcribe with WhisperKit")?
                 }
+                #[allow(unused)]
+                _ => {
+                    // never happened
+                    anyhow::bail!("Unsupported transcription engine");
+                }
             };
 
             pb.finish_with_message("Transcription complete");

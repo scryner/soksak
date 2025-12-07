@@ -13,5 +13,5 @@ sys-locale = "0.3.2"
 anyhow = "1.0"
 notify = "6.1"
 dirs = "5.0"
-soksak-lib = { path = "../soksak-lib" }
+soksak-lib = { path = "../soksak-lib", features = ["full"] }
 async-channel = "2.5.0"

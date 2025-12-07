@@ -92,10 +92,17 @@ impl ProfileManager {
                             if ext == "yaml" || ext == "yml" {
                                 if let Some(stem) = path.file_stem() {
                                     let name = stem.to_string_lossy().to_string();
+                                    println!("filepath: {}", path.to_string_lossy());
+
                                     // Try to parse to verify it's a valid RunConfig
-                                    if let Ok(config) = load_run_config(&path) {
-                                        profiles.push(name.clone());
-                                        cache.insert(name, config);
+                                    match load_run_config(&path) {
+                                        Ok(config) => {
+                                            profiles.push(name.clone());
+                                            cache.insert(name, config);
+                                        }
+                                        Err(e) => {
+                                            eprintln!("Failed to parse profile: {}", e);
+                                        }
                                     }
                                 }
                             }
