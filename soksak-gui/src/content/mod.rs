@@ -23,6 +23,8 @@ pub struct Content {
 }
 
 impl Content {
+    pub const SUPPORTED_VIDEO_EXTENSIONS: [&str; 2] = ["mp4", "avi"];
+
     pub fn new(
         app: &mut App,
         job_list: Entity<JobList>,
@@ -89,7 +91,39 @@ impl Render for Content {
             .flex()
             .flex_col()
             .child(self.header.clone())
-            .child(self.job_list.clone())
+            .child(
+                div()
+                    .flex_1()
+                    .size_full()
+                    .child(self.job_list.clone())
+                    .on_drop(cx.listener(|this, dropped: &ExternalPaths, _, cx| {
+                        let paths = dropped.paths();
+                        let profile_manager = this.profile_manager.read(cx);
+                        let current_profile = profile_manager
+                            .get_current_profile()
+                            .cloned()
+                            .unwrap_or_else(|| "Default".to_string());
+
+                        this.job_list.update(cx, |job_list, cx| {
+                            for path in paths {
+                                if let Some(ext) = path.extension() {
+                                    if let Some(ext_str) = ext.to_str() {
+                                        let ext_lower = ext_str.to_lowercase();
+                                        if Self::SUPPORTED_VIDEO_EXTENSIONS
+                                            .contains(&ext_lower.as_str())
+                                        {
+                                            job_list.add_job(
+                                                cx,
+                                                path.clone(),
+                                                current_profile.clone(),
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    })),
+            )
             .child(self.bottombar.clone())
             .when(self.profile_menu_open, |parent| {
                 if let Some(pos) = self.menu_position {

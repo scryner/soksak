@@ -135,7 +135,10 @@ impl Render for Header {
                                     let mut cx: AsyncApp = cx.clone();
                                     async move {
                                         let file = rfd::AsyncFileDialog::new()
-                                            .add_filter("Video", &["mp4", "avi"])
+                                            .add_filter(
+                                                "Video",
+                                                &crate::content::Content::SUPPORTED_VIDEO_EXTENSIONS,
+                                            )
                                             .pick_file()
                                             .await;
 
