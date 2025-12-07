@@ -7,11 +7,16 @@ use crate::content::job_list::JobList;
 use crate::icon::Icon;
 use crate::profile::{ProfileEvent, ProfileManager};
 
+pub enum HeaderEvent {
+    ToggleProfileMenu(Point<Pixels>),
+}
+
 pub struct Header {
     job_list: Entity<JobList>,
     profile_manager: Entity<ProfileManager>,
-    is_profile_menu_open: bool,
 }
+
+impl EventEmitter<HeaderEvent> for Header {}
 
 impl Header {
     pub fn new(
@@ -25,7 +30,6 @@ impl Header {
             Self {
                 job_list,
                 profile_manager,
-                is_profile_menu_open: false,
             }
         })
     }
@@ -39,17 +43,8 @@ impl Header {
         cx.notify();
     }
 
-    fn toggle_profile_menu(&mut self, cx: &mut Context<Self>) {
-        self.is_profile_menu_open = !self.is_profile_menu_open;
-        cx.notify();
-    }
-
-    fn select_profile(&mut self, profile: String, cx: &mut Context<Self>) {
-        self.profile_manager.update(cx, |manager, cx| {
-            manager.select_profile(profile, cx);
-        });
-        self.is_profile_menu_open = false;
-        cx.notify();
+    fn toggle_profile_menu(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+        cx.emit(HeaderEvent::ToggleProfileMenu(position));
     }
 }
 
@@ -68,7 +63,7 @@ impl Render for Header {
             .get_current_profile()
             .cloned()
             .unwrap_or_else(|| "Default".to_string());
-        let profiles = profile_manager.get_profiles().clone();
+        // We don't need `profiles` here anymore, parent needs it.
 
         // Header
         div()
@@ -79,6 +74,7 @@ impl Render for Header {
             .px_6()
             .border_b_1()
             .border_color(rgb(0x333333))
+            // .z_index(100) eliminated
             .child(
                 div()
                     .text_lg()
@@ -90,61 +86,28 @@ impl Render for Header {
                     .flex()
                     .gap_2()
                     .child(
-                        // Profile Dropdown
-                        div()
-                            .relative()
-                            .child(
-                                div()
-                                    .px_3()
-                                    .py_1()
-                                    .rounded_md()
-                                    .bg(rgb(0x333333))
-                                    .text_sm()
-                                    .flex()
-                                    .items_center()
-                                    .gap_1()
-                                    .cursor_pointer()
-                                    .on_mouse_down(
-                                        MouseButton::Left,
-                                        cx.listener(|this, _, _, cx| {
-                                            this.toggle_profile_menu(cx);
-                                        }),
-                                    )
-                                    .child(format!("Profile: {}", current_profile))
-                                    .child(Icon::ChevronDown.render().text_color(rgb(0xaaaaaa))),
-                            )
-                            .when(self.is_profile_menu_open, |parent| {
-                                parent.child(
-                                    div()
-                                        .absolute()
-                                        .top(px(30.0))
-                                        .right(px(0.0))
-                                        .w_40()
-                                        .bg(rgb(0x252526))
-                                        .border_1()
-                                        .border_color(rgb(0x333333))
-                                        .rounded_md()
-                                        .shadow_md()
-                                        // Ensure it's on top by order
-                                        .children(profiles.into_iter().map(|profile| {
-                                            let is_selected = profile == current_profile;
-                                            div()
-                                                .px_3()
-                                                .py_1()
-                                                .text_sm()
-                                                .cursor_pointer()
-                                                .hover(|s| s.bg(rgb(0x37373d)))
-                                                .when(is_selected, |s| s.text_color(rgb(0x4a9eff))) // Highlight selected
-                                                .child(profile.clone())
-                                                .on_mouse_down(
-                                                    MouseButton::Left,
-                                                    cx.listener(move |this, _, _, cx| {
-                                                        this.select_profile(profile.clone(), cx);
-                                                    }),
-                                                )
-                                        })),
+                        // Profile Dropdown Trigger
+                        div().relative().child(
+                            div()
+                                .px_3()
+                                .py_1()
+                                .rounded_md()
+                                .bg(rgb(0x333333))
+                                .text_sm()
+                                .flex()
+                                .items_center()
+                                .gap_1()
+                                .cursor_pointer()
+                                .on_mouse_down(
+                                    MouseButton::Left,
+                                    cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                                        this.toggle_profile_menu(event.position, cx);
+                                    }),
                                 )
-                            }),
+                                .child(format!("Profile: {}", current_profile))
+                                .child(Icon::ChevronDown.render().text_color(rgb(0xaaaaaa))),
+                        ),
+                        // Removed Rendered Menu
                     )
                     .child(
                         // Add File Button
