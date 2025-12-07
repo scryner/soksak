@@ -104,7 +104,7 @@ impl Render for Header {
                                         this.toggle_profile_menu(event.position, cx);
                                     }),
                                 )
-                                .child(format!("Profile: {}", current_profile))
+                                .child(current_profile)
                                 .child(Icon::ChevronDown.render().text_color(rgb(0xaaaaaa))),
                         ),
                         // Removed Rendered Menu
