@@ -125,6 +125,12 @@ impl Render for Header {
                             .id("add_file_btn")
                             .on_click(cx.listener(|this, _event, _window, cx| {
                                 let job_list = this.job_list.clone();
+                                let profile_manager = this.profile_manager.read(cx);
+                                let current_profile = profile_manager
+                                    .get_current_profile()
+                                    .cloned()
+                                    .unwrap_or_else(|| "Default".to_string());
+
                                 cx.spawn(|_, cx: &mut AsyncApp| {
                                     let mut cx: AsyncApp = cx.clone();
                                     async move {
@@ -137,8 +143,8 @@ impl Render for Header {
                                             let path = file.path().to_path_buf();
                                             // cx is owned AsyncApp here?
                                             job_list
-                                                .update(&mut cx, |job_list, cx| {
-                                                    job_list.add_job(cx, path);
+                                                .update(&mut cx, move |job_list, cx| {
+                                                    job_list.add_job(cx, path, current_profile);
                                                 })
                                                 .ok();
                                         }

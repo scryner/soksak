@@ -43,13 +43,13 @@ impl JobList {
         })
     }
 
-    pub fn add_job(&mut self, cx: &mut Context<Self>, path: PathBuf) {
+    pub fn add_job(&mut self, cx: &mut Context<Self>, path: PathBuf, profile: String) {
         let name = path
             .file_name()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "Unknown".to_string());
 
-        let job = Job::new(cx, &name, "Default", Status::Queued);
+        let job = Job::new(cx, &name, &profile, Status::Queued);
         cx.subscribe(&job, Self::on_job_event).detach();
 
         self.jobs.push(job);
