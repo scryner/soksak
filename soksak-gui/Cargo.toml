@@ -11,3 +11,7 @@ rust-i18n = "3.1.5"
 serde = "1.0.228"
 sys-locale = "0.3.2"
 anyhow = "1.0"
+notify = "6.1"
+dirs = "5.0"
+soksak-lib = { path = "../soksak-lib" }
+async-channel = "2.5.0"

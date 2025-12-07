@@ -14,9 +14,13 @@ pub struct Content {
 }
 
 impl Content {
-    pub fn new(app: &mut App, job_list: Entity<JobList>) -> Entity<Self> {
+    pub fn new(
+        app: &mut App,
+        job_list: Entity<JobList>,
+        profile_manager: Entity<crate::profile::ProfileManager>,
+    ) -> Entity<Self> {
         app.new(|inner| Self {
-            header: Header::new(inner, job_list.clone()),
+            header: Header::new(inner, job_list.clone(), profile_manager),
             bottombar: BottomBar::new(inner),
             job_list,
         })

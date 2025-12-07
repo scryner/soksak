@@ -5,14 +5,16 @@ use crate::{content::Content, sidebar::Sidebar};
 pub struct SoksakApp {
     sidebar: Entity<Sidebar>,
     content: Entity<Content>,
+    _profile_manager: Entity<crate::profile::ProfileManager>,
 }
 
 impl SoksakApp {
-    pub fn new(app: &mut App) -> Self {
+    pub fn new(app: &mut App, profile_manager: Entity<crate::profile::ProfileManager>) -> Self {
         let job_list = crate::content::job_list::JobList::new(app);
         Self {
             sidebar: Sidebar::new(app, job_list.clone()),
-            content: Content::new(app, job_list),
+            content: Content::new(app, job_list, profile_manager.clone()),
+            _profile_manager: profile_manager,
         }
     }
 }

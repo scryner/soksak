@@ -467,7 +467,7 @@ pub struct LlmProviderConfig {
     pub json_mode_type: JsonModeType,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct RunConfig {
     pub whisper: Option<WhisperConfig>,
     pub translation: Option<TranslationConfig>,

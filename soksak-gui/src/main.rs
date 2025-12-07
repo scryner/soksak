@@ -5,6 +5,7 @@ use crate::socsak_app::SoksakApp;
 pub mod assets;
 mod content;
 pub mod icon;
+mod profile;
 mod sidebar;
 mod socsak_app;
 
@@ -33,7 +34,10 @@ fn main() {
                     }),
                     ..Default::default()
                 },
-                |_, app| app.new(|inner| SoksakApp::new(inner)),
+                |_, app| {
+                    let profile_manager = crate::profile::ProfileManager::new(app);
+                    app.new(|inner| SoksakApp::new(inner, profile_manager))
+                },
             )
             .expect("failed to open window");
 
