@@ -23,3 +23,15 @@ btn.cancel:
 btn.remove:
   en: Remove
   ko: 삭제
+progress.ready:
+  en: Ready
+  ko: 준비
+progress.extract_audio:
+  en: Extracting Audio
+  ko: 오디오 추출 중
+progress.transcribing:
+  en: Transcribing
+  ko: 텍스트 추출 중
+progress.translating:
+  en: Translating
+  ko: 번역 중

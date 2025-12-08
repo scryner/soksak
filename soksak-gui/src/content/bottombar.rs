@@ -39,7 +39,7 @@ impl Render for BottomBar {
                     .justify_between()
                     .text_sm()
                     .text_color(rgb(0xcccccc))
-                    .child("Ready")
+                    .child(SharedString::from(t!("progress.ready")))
                     .child("0%"),
             )
             .child(
