@@ -1,7 +1,9 @@
+use std::path::PathBuf;
+
 use gpui::InteractiveElement;
 use gpui::prelude::*;
 use gpui::*;
-use std::path::PathBuf;
+use rust_i18n::t;
 
 use crate::content::job::{Job, JobEvent, Status};
 
@@ -23,23 +25,11 @@ pub struct JobList {
 impl JobList {
     pub fn new(app: &mut App) -> Entity<Self> {
         // app.new(|_| Self { jobs: Vec::new() })
-        app.new(|cx| {
-            let jobs = vec![
-                Job::new(cx, "A.mp4", "Profile 1", Status::Queued),
-                Job::new(cx, "B.mp4", "Profile 2", Status::Queued),
-                Job::new(cx, "C.mp4", "Profile 3", Status::Queued),
-            ];
-
-            for job in &jobs {
-                cx.subscribe(job, Self::on_job_event).detach();
-            }
-
-            Self {
-                jobs,
-                filter: Filter::All,
-                selected_index: None,
-                active_menu: None,
-            }
+        app.new(|_| Self {
+            jobs: Vec::new(),
+            filter: Filter::All,
+            selected_index: None,
+            active_menu: None,
         })
     }
 
@@ -219,7 +209,12 @@ impl Render for JobList {
                                             }),
                                         )
                                     })
-                                    .child(div().text_sm().text_color(rgb(0xffaaaa)).child("삭제")),
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(rgb(0xffaaaa))
+                                            .child(SharedString::from(t!("btn.remove"))),
+                                    ),
                             ),
                     )
             },

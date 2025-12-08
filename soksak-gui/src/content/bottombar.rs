@@ -39,23 +39,17 @@ impl Render for BottomBar {
                     .justify_between()
                     .text_sm()
                     .text_color(rgb(0xcccccc))
-                    .child("Processing: Onboarding_flow_v3.mp4")
-                    .child("42%"),
+                    .child("Ready")
+                    .child("0%"),
             )
             .child(
                 div()
                     .flex()
                     .gap_3()
                     .items_center()
-                    .child(
-                        div().flex_1().h_2().rounded_full().bg(rgb(0x333333)).child(
-                            div()
-                                .h_full()
-                                .w_2_5() // 40% roughly
-                                .rounded_full()
-                                .bg(rgb(0x0066ff)), // Blue
-                        ),
-                    )
+                    .child(div().flex_1().h_2().rounded_full().bg(rgb(0x333333)).child(
+                        div().h_full().w(px(0.0)).rounded_full().bg(rgb(0x0066ff)), // Blue
+                    ))
                     .child(
                         // Start/Cancel Button
                         div()

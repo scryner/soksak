@@ -20,3 +20,6 @@ btn.start:
 btn.cancel:
   en: Cancel
   ko: 취소
+btn.remove:
+  en: Remove
+  ko: 삭제
