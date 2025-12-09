@@ -33,6 +33,9 @@ impl Progress for CliProgress {
     fn finish_with_message(&self, msg: &str) {
         self.0.finish_with_message(msg.to_string());
     }
+    fn set_length(&self, len: u64) {
+        self.0.set_length(len);
+    }
 }
 
 #[derive(Parser)]

@@ -56,6 +56,8 @@ impl Render for Header {
             crate::content::job_list::Filter::Processing => t!("list.inprogress"),
             crate::content::job_list::Filter::Queued => t!("list.queued"),
             crate::content::job_list::Filter::Completed => t!("list.completed"),
+            crate::content::job_list::Filter::Canceled => t!("list.canceled"),
+            crate::content::job_list::Filter::Failed => t!("list.failed"),
         };
 
         let profile_manager = self.profile_manager.read(cx);

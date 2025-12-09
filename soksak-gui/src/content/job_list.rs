@@ -13,6 +13,8 @@ pub enum Filter {
     Processing,
     Queued,
     Completed,
+    Canceled,
+    Failed,
 }
 
 pub struct JobList {
@@ -39,7 +41,7 @@ impl JobList {
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "Unknown".to_string());
 
-        let job = Job::new(cx, &name, &profile, Status::Queued);
+        let job = Job::new(cx, &name, path, &profile, Status::Queued);
         cx.subscribe(&job, Self::on_job_event).detach();
 
         self.jobs.push(job);
@@ -48,6 +50,20 @@ impl JobList {
 
     pub fn close_menu(&mut self, cx: &mut Context<Self>) {
         self.active_menu = None;
+        cx.notify();
+    }
+
+    pub fn get_next_queued_job(&self, cx: &App) -> Option<Entity<Job>> {
+        self.jobs
+            .iter()
+            .find(|job| matches!(job.read(cx).status, Status::Queued))
+            .cloned()
+    }
+
+    pub fn mark_job_status(&mut self, job: Entity<Job>, status: Status, cx: &mut Context<Self>) {
+        job.update(cx, |job, cx| {
+            job.set_status(status, cx);
+        });
         cx.notify();
     }
 
@@ -72,11 +88,13 @@ impl JobList {
         cx.notify();
     }
 
-    pub fn counts(&self, cx: &App) -> (usize, usize, usize, usize) {
+    pub fn counts(&self, cx: &App) -> (usize, usize, usize, usize, usize, usize) {
         let mut all = 0;
         let mut processing = 0;
         let mut queued = 0;
         let mut completed = 0;
+        let mut canceled = 0;
+        let mut failed = 0;
 
         for job in &self.jobs {
             all += 1;
@@ -85,11 +103,33 @@ impl JobList {
                 Status::Processing => processing += 1,
                 Status::Queued => queued += 1,
                 Status::Completed => completed += 1,
-                Status::Failed => (), // Or count separately if needed
+                Status::Canceled => canceled += 1,
+                Status::Failed => failed += 1,
+                Status::Canceling => {
+                    processing += 1; // Count canceling as processing for UI purposes? Or separate? 
+                    // User wants "Canceling" to be distinct?
+                    // "Current processing job should be marked as 'Canceling' ... instead of 'Completed'"
+                    // Counts usually update the sidebar.
+                    // If I put it in `processing`, it stays in "Processing" filter.
+                    // If I put it in `canceled`, it moves to "Canceled" filter immediately?
+                    // Logic: "Canceling" is an active state. So maybe keep in processing count or adds to it?
+                    // Let's count it as processing until it is fully canceled.
+                }
             }
         }
 
-        (all, processing, queued, completed)
+        (all, queued, processing, completed, canceled, failed)
+    }
+
+    pub fn mark_processing_as_canceling(&mut self, cx: &mut Context<Self>) {
+        for job in &self.jobs {
+            if matches!(job.read(cx).status, Status::Processing) {
+                job.update(cx, |job, cx| {
+                    job.set_status(Status::Canceling, cx);
+                });
+            }
+        }
+        cx.notify();
     }
 
     fn on_job_event(&mut self, job: Entity<Job>, event: &JobEvent, cx: &mut Context<Self>) {
@@ -113,6 +153,8 @@ impl Render for JobList {
                 Filter::Processing => matches!(status, Status::Processing),
                 Filter::Queued => matches!(status, Status::Queued),
                 Filter::Completed => matches!(status, Status::Completed),
+                Filter::Canceled => matches!(status, Status::Canceled),
+                Filter::Failed => matches!(status, Status::Failed),
             };
 
             if show {

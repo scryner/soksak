@@ -12,6 +12,8 @@ mod socsak_app;
 rust_i18n::i18n!("assets");
 actions!(soksak_gui, [Quit]);
 
+pub mod progress;
+
 fn main() {
     // Get system locale and set it as application locale
     let locale = sys_locale::get_locale().unwrap_or("en_US".to_string());

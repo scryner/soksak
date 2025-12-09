@@ -5,12 +5,18 @@ list.all:
 list.queued:
   en: Queued
   ko: 대기 중
-list.inprogress:
-  en: In Progress
-  ko: 진행 중
+list.processing:
+  en: Processing
+  ko: 처리 중
 list.completed:
   en: Completed
   ko: 완료
+list.canceled:
+  en: Canceled
+  ko: 취소
+list.canceling:
+  en: Canceling
+  ko: 취소 중
 list.failed:
   en: Failed
   ko: 실패
@@ -27,11 +33,11 @@ progress.ready:
   en: Ready
   ko: 준비
 progress.extract_audio:
-  en: Extracting Audio
-  ko: 오디오 추출 중
+  en: Extracting Audio...
+  ko: 오디오 추출 중...
 progress.transcribing:
-  en: Transcribing
-  ko: 텍스트 추출 중
+  en: Transcribing...
+  ko: 텍스트 추출 중...
 progress.translating:
-  en: Translating
-  ko: 번역 중
+  en: Translating...
+  ko: 번역 중...

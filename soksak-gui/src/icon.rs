@@ -9,6 +9,8 @@ pub enum Icon {
     PauseCircle,
     CheckCircle,
     ChevronDown,
+    Delete,
+    Warning,
 }
 
 impl Icon {
@@ -21,6 +23,8 @@ impl Icon {
             Icon::PauseCircle => "icons/pause_circle.svg".into(),
             Icon::CheckCircle => "icons/check_circle.svg".into(),
             Icon::ChevronDown => "icons/chevron-down.svg".into(),
+            Icon::Delete => "icons/delete.svg".into(),
+            Icon::Warning => "icons/warning.svg".into(),
         }
     }
 

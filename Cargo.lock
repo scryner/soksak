@@ -5661,6 +5661,7 @@ dependencies = [
  "serde",
  "soksak-lib",
  "sys-locale",
+ "tokio",
 ]
 
 [[package]]

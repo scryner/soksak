@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use gpui::InteractiveElement;
 use gpui::prelude::*;
 use gpui::*;
@@ -9,6 +11,7 @@ pub enum JobEvent {
 
 pub struct Job {
     pub(crate) name: SharedString,
+    pub(crate) path: PathBuf,
     pub(crate) profile: SharedString,
     pub(crate) status: Status,
     pub(crate) selected: bool,
@@ -17,12 +20,19 @@ pub struct Job {
 impl EventEmitter<JobEvent> for Job {}
 
 impl Job {
-    pub fn new(app: &mut App, name: &str, profile: &str, status: Status) -> Entity<Self> {
+    pub fn new(
+        app: &mut App,
+        name: &str,
+        path: PathBuf,
+        profile: &str,
+        status: Status,
+    ) -> Entity<Self> {
         let name: SharedString = name.to_string().into();
         let profile: SharedString = profile.to_string().into();
 
         app.new(|_| Self {
             name,
+            path,
             profile,
             status,
             selected: false,
@@ -32,6 +42,15 @@ impl Job {
     pub fn set_selected(&mut self, selected: bool, cx: &mut Context<Self>) {
         self.selected = selected;
         cx.notify();
+    }
+
+    pub fn set_status(&mut self, status: Status, cx: &mut Context<Self>) {
+        self.status = status;
+        cx.notify();
+    }
+
+    pub fn get_path(&self) -> String {
+        self.path.to_string_lossy().to_string()
     }
 
     pub fn toggle_menu(&mut self, event: &ClickEvent, cx: &mut Context<Self>) {
@@ -130,6 +149,8 @@ pub enum Status {
     Processing,
     Completed,
     Failed,
+    Canceled,
+    Canceling,
 }
 
 impl From<Status> for SharedString {
@@ -139,6 +160,8 @@ impl From<Status> for SharedString {
             Status::Processing => SharedString::from(t!("list.processing")),
             Status::Completed => SharedString::from(t!("list.completed")),
             Status::Failed => SharedString::from(t!("list.failed")),
+            Status::Canceled => SharedString::from(t!("list.canceled")),
+            Status::Canceling => SharedString::from(t!("list.canceling")),
         }
     }
 }

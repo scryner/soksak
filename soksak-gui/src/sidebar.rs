@@ -43,20 +43,20 @@ impl Render for Sidebar {
             ))
             .child(self.render_item(
                 cx,
-                crate::content::job_list::Filter::Processing,
+                crate::content::job_list::Filter::Queued,
                 active_filter,
-                t!("list.inprogress"),
+                t!("list.queued"),
                 counts.1,
-                crate::icon::Icon::ProgressActivity,
+                crate::icon::Icon::PauseCircle,
                 job_list_entity.clone(),
             ))
             .child(self.render_item(
                 cx,
-                crate::content::job_list::Filter::Queued,
+                crate::content::job_list::Filter::Processing,
                 active_filter,
-                t!("list.queued"),
+                t!("list.processing"),
                 counts.2,
-                crate::icon::Icon::PauseCircle,
+                crate::icon::Icon::ProgressActivity,
                 job_list_entity.clone(),
             ))
             .child(self.render_item(
@@ -66,6 +66,24 @@ impl Render for Sidebar {
                 t!("list.completed"),
                 counts.3,
                 crate::icon::Icon::CheckCircle,
+                job_list_entity.clone(),
+            ))
+            .child(self.render_item(
+                cx,
+                crate::content::job_list::Filter::Canceled,
+                active_filter,
+                t!("list.canceled"),
+                counts.4,
+                crate::icon::Icon::Delete,
+                job_list_entity.clone(),
+            ))
+            .child(self.render_item(
+                cx,
+                crate::content::job_list::Filter::Failed,
+                active_filter,
+                t!("list.failed"),
+                counts.5,
+                crate::icon::Icon::Warning,
                 job_list_entity.clone(),
             ))
     }

@@ -6,4 +6,8 @@ pub trait Progress: Send + Sync {
     fn finish_with_message(&self, msg: &str) {
         let _ = msg;
     }
+    // New method for determinite progress with total count
+    fn set_length(&self, len: u64) {
+        let _ = len;
+    }
 }
