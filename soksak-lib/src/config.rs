@@ -480,6 +480,7 @@ pub struct WhisperConfig {
     pub initial_prompt: Option<String>,
     pub vad: Option<bool>,
     pub temperature: Option<f32>,
+    pub default_language: Option<Language>,
 }
 
 #[derive(Debug, Deserialize, Clone)]

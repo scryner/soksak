@@ -55,8 +55,8 @@ enum Commands {
         profile: Option<String>,
 
         /// Input language (default: auto)
-        #[arg(short, long, default_value = "auto")]
-        lang: Language,
+        #[arg(short, long)]
+        lang: Option<Language>,
     },
 
     // Run translation
@@ -69,8 +69,8 @@ enum Commands {
         profile: String,
 
         /// Input language (default: auto)
-        #[arg(short, long, default_value = "auto")]
-        lang: Language,
+        #[arg(short, long)]
+        lang: Option<Language>,
     },
 }
 
@@ -117,12 +117,6 @@ async fn main() -> anyhow::Result<()> {
             // 2. Transcribe
             println!("Transcribing...");
 
-            // Get model config for the specified language
-            let model_config = app_config.transcription.models.get(&lang).ok_or_else(|| {
-                anyhow::anyhow!("No transcription model configured for language: {:?}", lang)
-            })?;
-
-            // Extract whisper configuration
             let whisper_conf = match &run_config {
                 Some(config) => match &config.whisper {
                     Some(conf) => conf.clone(),
@@ -130,6 +124,16 @@ async fn main() -> anyhow::Result<()> {
                 },
                 None => WhisperConfig::default(),
             };
+
+            // Resolve Default Language
+            let lang = lang
+                .or(whisper_conf.default_language)
+                .unwrap_or(Language::Auto);
+
+            // Get model config for the specified language
+            let model_config = app_config.transcription.models.get(&lang).ok_or_else(|| {
+                anyhow::anyhow!("No transcription model configured for language: {:?}", lang)
+            })?;
 
             // Make transcribe progress
             let pb = ProgressBar::new(100);
@@ -243,9 +247,13 @@ async fn main() -> anyhow::Result<()> {
             // 2. Load Run Config (Required)
             let conf_path = resolve_profile_path(&profile)?;
             let run_config = config::load_run_config(&conf_path)?;
-            let tc = run_config.translation.ok_or_else(|| {
+            let tc = run_config.translation.clone().ok_or_else(|| {
                 anyhow::anyhow!("Translation config is required for translate command")
             })?;
+
+            let lang = lang
+                .or(run_config.whisper.as_ref().and_then(|w| w.default_language))
+                .unwrap_or(Language::Auto);
 
             // 3. Load Transcript
             let transcript_content = std::fs::read_to_string(&input)?;
