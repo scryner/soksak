@@ -2,7 +2,7 @@ use crate::progress::Progress;
 use anyhow::{anyhow, Result};
 use audrey::Reader;
 use regex::Regex;
-use std::io::{BufRead, BufReader};
+use std::io::{BufReader, Read};
 use std::path::Path;
 use std::process::Command;
 use std::process::Stdio;
@@ -33,6 +33,8 @@ fn use_ffmpeg<P: AsRef<Path>>(input_path: P, pb: &impl Progress) -> Result<Named
             "-y",
             "-loglevel",
             "info", // Need info to see progress
+            "-progress",
+            "pipe:2",
         ])
         .stdin(Stdio::null())
         .stderr(Stdio::piped())
@@ -42,72 +44,65 @@ fn use_ffmpeg<P: AsRef<Path>>(input_path: P, pb: &impl Progress) -> Result<Named
     let mut reader = BufReader::new(stderr);
 
     let re_duration = Regex::new(r"Duration: (\d{2}):(\d{2}):(\d{2})\.(\d{2})").unwrap();
-    let re_time = Regex::new(r"time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})").unwrap();
+    // Key-value parsing does not strictly require regex, but we will search for the specific line
 
     let mut total_duration_secs: Option<f64> = None;
     let mut buffer = Vec::new();
+    let mut byte_buf = [0u8; 1];
 
-    // Read byte by byte or chunks to handle \r
-    // Using read_until would be easier but we need to handle both \n and \r
-    // Actually, ffmpeg uses \r for status lines.
-
-    // We can loop and separate by \r or \n
+    // Read byte by byte to handle both \r and \n properly
     loop {
-        buffer.clear();
-        let bytes_read = reader.read_until(b'\r', &mut buffer)?;
-        if bytes_read == 0 {
-            break;
-        }
+        match reader.read(&mut byte_buf) {
+            Ok(0) => break, // EOF
+            Ok(_) => {
+                let b = byte_buf[0];
+                if b == b'\r' || b == b'\n' {
+                    if !buffer.is_empty() {
+                        let line = String::from_utf8_lossy(&buffer);
 
-        let line = String::from_utf8_lossy(&buffer);
+                        // Parse Total Duration
+                        if total_duration_secs.is_none() {
+                            if let Some(caps) = re_duration.captures(&line) {
+                                if let (Ok(hours), Ok(mins), Ok(secs), Ok(centis)) = (
+                                    caps[1].parse::<f64>(),
+                                    caps[2].parse::<f64>(),
+                                    caps[3].parse::<f64>(),
+                                    caps[4].parse::<f64>(),
+                                ) {
+                                    total_duration_secs =
+                                        Some(hours * 3600.0 + mins * 60.0 + secs + centis / 100.0);
+                                }
+                            }
+                        }
 
-        // Also check if there are internal newlines if read_until skipped them?
-        // read_until stops AT delimiter.
-        // If we have mixed \n and \r, it might be tricky.
-        // ffmpeg usually does:
-        // Duration: ... \n
-        // ...
-        // time=... \r time=... \r
+                        // Parse out_time_us for progress
+                        if let Some(total) = total_duration_secs {
+                            if line.starts_with("out_time_us=") {
+                                let val_str = &line["out_time_us=".len()..];
+                                if let Ok(us) = val_str.trim().parse::<i64>() {
+                                    let current_secs = us as f64 / 1_000_000.0;
+                                    if current_secs >= 0.0 {
+                                        let progress = (current_secs / total * 100.0) as u64;
+                                        pb.set_position(progress.min(100));
+                                    }
+                                }
+                            }
+                        }
 
-        // If we read until \r, we might miss \n lines if they don't have \r?
-        // But read_until(b'\r') will read everything up to \r.
-        // If there is a \n in between, it will be in the buffer. we should scan the buffer.
-
-        // However, standard ffmpeg output lines end with \n.
-        // Progress lines end with \r.
-        // If I use read_until(b'\r'), and a line ends with \n but NOT \r, it will keep reading until next \r.
-        // That effectively buffers standard lines until the first progress line appears.
-        // That is acceptable since we only care about "Duration" (early) and "time=" (progress).
-        // "Duration" comes early.
-
-        // Let's rely on the fact that we can parse the string in the buffer.
-        // Regex search in the buffer.
-
-        if let Some(caps) = re_duration.captures(&line) {
-            let hours: f64 = caps[1].parse()?;
-            let mins: f64 = caps[2].parse()?;
-            let secs: f64 = caps[3].parse()?;
-            let centis: f64 = caps[4].parse()?;
-            total_duration_secs = Some(hours * 3600.0 + mins * 60.0 + secs + centis / 100.0);
-        }
-
-        if let Some(caps) = re_time.captures(&line) {
-            if let Some(total) = total_duration_secs {
-                let hours: f64 = caps[1].parse()?;
-                let mins: f64 = caps[2].parse()?;
-                let secs: f64 = caps[3].parse()?;
-                let centis: f64 = caps[4].parse()?;
-                let current_secs = hours * 3600.0 + mins * 60.0 + secs + centis / 100.0;
-
-                let progress = (current_secs / total * 100.0) as u64;
-                pb.set_position(progress.min(100));
+                        buffer.clear();
+                    }
+                } else {
+                    buffer.push(b);
+                }
             }
+            Err(_) => break, // Error
         }
     }
 
     if child.wait()?.success() {
         // println!("Audio file converted successfully");
-        pb.finish();
+        // Don't finish the progress bar here. The caller should do it.
+        // soksak-lib/src/transcribe/whisper_cpp/mod.rs does call finish_with_message("Audio extracted")
         Ok(temp_file)
     } else {
         Err(anyhow!("unable to convert file"))
