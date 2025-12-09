@@ -64,7 +64,8 @@ impl Whisper {
         &mut self,
         audio: P,
         conf: &WhisperConfig,
-        pb: &impl Progress,
+        pb_extract_audio: &impl Progress,
+        pb_transcribe: &impl Progress,
     ) -> Result<Vec<TranscriptSegment>> {
         // make parameters
         let mut params = FullParams::new(whisper_rs::SamplingStrategy::BeamSearch {
@@ -122,7 +123,7 @@ impl Whisper {
 
         // Set the progress callback to update the provided ProgressBar
         // We create a fat pointer reference and pass its address
-        let pb_dyn: &dyn Progress = pb;
+        let pb_dyn: &dyn Progress = pb_transcribe;
         let pb_ptr = &pb_dyn as *const &dyn Progress;
 
         unsafe {
@@ -132,10 +133,16 @@ impl Whisper {
             params.set_progress_callback_user_data(pb_ptr as *mut c_void);
         }
 
-        let audio = ffmpeg_decoder::read_file(audio)?;
+        // Extract audio from video file
+        pb_extract_audio.set_message("Extracting audio...");
+        let audio = ffmpeg_decoder::read_file(audio, pb_extract_audio)?;
+        pb_extract_audio.finish_with_message("Audio extracted");
 
+        // Do transcription
+        pb_transcribe.set_message("Transcribing...");
         let mut state = self.ctx.create_state()?;
         state.full(params, &audio)?;
+        pb_transcribe.finish_with_message("Transcribed");
 
         let num_segments = state.full_n_segments();
         if num_segments < 1 {

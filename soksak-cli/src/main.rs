@@ -27,6 +27,9 @@ impl Progress for CliProgress {
     fn finish(&self) {
         self.0.finish();
     }
+    fn set_message(&self, msg: &str) {
+        self.0.set_message(msg.to_string());
+    }
     fn finish_with_message(&self, msg: &str) {
         self.0.finish_with_message(msg.to_string());
     }
@@ -119,16 +122,7 @@ async fn main() -> anyhow::Result<()> {
                 anyhow::anyhow!("No transcription model configured for language: {:?}", lang)
             })?;
 
-            let pb = indicatif::ProgressBar::new(100);
-            pb.set_style(
-                indicatif::ProgressStyle::default_bar()
-                    .template(
-                        "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}% ({eta})",
-                    )
-                    .unwrap()
-                    .progress_chars("#>-"),
-            );
-
+            // Extract whisper configuration
             let whisper_conf = match &run_config {
                 Some(config) => match &config.whisper {
                     Some(conf) => conf.clone(),
@@ -137,15 +131,40 @@ async fn main() -> anyhow::Result<()> {
                 None => WhisperConfig::default(),
             };
 
+            // Make transcribe progress
+            let pb = ProgressBar::new(100);
+            pb.set_style(
+                        indicatif::ProgressStyle::default_bar()
+                            .template(
+                                "{spinner:.green} [{elapsed_precise}] [{bar:40.yellow/red}] {pos}% ({eta}) {msg}",
+                            )
+                            .unwrap()
+                            .progress_chars("#>-"),
+                    );
+            let pb = CliProgress(pb);
+
+            // Do transcription
             let segments = match &model_config.engine {
                 TranscriptionEngine::WhisperCpp => {
                     let mut whisper = Whisper::new(&app_config.transcription, lang.clone())
                         .await
                         .context("Failed to create Whisper instance")?;
 
-                    let pb_wrapper = CliProgress(pb.clone());
+                    // Make extract progress
+                    let pb_extract = ProgressBar::new(100);
+                    pb_extract.set_style(
+                        indicatif::ProgressStyle::default_bar()
+                            .template(
+                                "{spinner:.green} [{elapsed_precise}] [{bar:40.yellow/red}] {pos}% ({eta}) {msg}",
+                            )
+                            .unwrap()
+                            .progress_chars("#>-"),
+                    );
+
+                    let pb_extract = CliProgress(pb_extract);
+
                     whisper
-                        .transcribe(&input_path, &whisper_conf, &pb_wrapper)
+                        .transcribe(&input_path, &whisper_conf, &pb_extract, &pb)
                         .context("Failed to transcribe with WhisperCpp")?
                 }
                 #[cfg(feature = "apple")]
@@ -157,9 +176,9 @@ async fn main() -> anyhow::Result<()> {
                     };
                     let model_path = model_config.resolve_model_path().await?;
                     let whisperkit = WhisperKit::new(model_path.to_str().unwrap(), lang_str);
-                    let pb_wrapper = CliProgress(pb.clone());
+
                     whisperkit
-                        .transcribe(&input_path, &whisper_conf, &pb_wrapper)
+                        .transcribe(&input_path, &whisper_conf, &pb)
                         .context("Failed to transcribe with WhisperKit")?
                 }
                 #[allow(unused)]
@@ -168,8 +187,6 @@ async fn main() -> anyhow::Result<()> {
                     anyhow::bail!("Unsupported transcription engine");
                 }
             };
-
-            pb.finish_with_message("Transcription complete");
 
             // Save Transcript
             let transcript_path = parent_dir.join(format!("{}.transcript.json", file_stem));
@@ -183,23 +200,22 @@ async fn main() -> anyhow::Result<()> {
                     let pb_trans = indicatif::ProgressBar::new(segments.len() as u64);
                     pb_trans.set_style(
                         indicatif::ProgressStyle::default_bar()
-                            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
+                            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta}) {msg}")
                             .unwrap()
                             .progress_chars("#>-"),
                     );
                     pb_trans.enable_steady_tick(Duration::from_millis(100));
+                    let pb_trans = CliProgress(pb_trans);
 
-                    let pb_wrapper = CliProgress(pb_trans.clone());
                     let translated_segments = translate::process_translation(
                         &lang,
                         &tc.translate,
                         tc.edit.as_ref(),
                         segments,
                         &app_config,
-                        &pb_wrapper,
+                        &pb_trans,
                     )
                     .await?;
-                    pb_trans.finish_with_message("Translation complete");
 
                     // Save Translation
                     let translation_path =

@@ -75,6 +75,7 @@ pub async fn process_translation(
     };
 
     // Process in chunks
+    pb.set_message("Translating...");
     for chunk in segments.chunks(window_size) {
         let batch_items: Vec<BatchItem> = chunk
             .iter()
@@ -177,6 +178,7 @@ pub async fn process_translation(
         translated_segments.extend(mapped_results);
         pb.inc(chunk.len() as u64);
     }
+    pb.finish_with_message("Translated");
 
     Ok(translated_segments)
 }

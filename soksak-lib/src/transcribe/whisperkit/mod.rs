@@ -137,6 +137,8 @@ impl WhisperKit {
         let (tx, rx) = channel::<BridgeMessage>();
         let tx_ptr = Box::into_raw(Box::new(tx));
 
+        pb.set_message("Transcribing...");
+
         unsafe {
             whisperkit_transcribe(
                 self.context,
@@ -148,6 +150,8 @@ impl WhisperKit {
                 tx_ptr as *mut c_void,
             );
         }
+
+        pb.finish_with_message("Transcribed");
 
         let mut segments = Vec::new();
 
@@ -195,6 +199,9 @@ mod tests {
     impl Progress for DummyProgress {
         fn inc(&self, _delta: u64) {}
         fn set_position(&self, _pos: u64) {}
+        fn set_message(&self, _msg: &str) {}
+        fn finish(&self) {}
+        fn finish_with_message(&self, _msg: &str) {}
     }
 
     #[test]
