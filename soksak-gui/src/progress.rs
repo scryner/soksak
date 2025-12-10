@@ -16,7 +16,8 @@ pub struct GuiProgress {
 }
 
 impl GuiProgress {
-    pub fn new(tx: Sender<ProgressEvent>) -> Self {
+    pub fn new(tx: Sender<ProgressEvent>, message: &str) -> Self {
+        let _ = tx.send(ProgressEvent::SetMessage(message.to_string()));
         Self { tx }
     }
 }
@@ -34,8 +35,8 @@ impl Progress for GuiProgress {
         let _ = self.tx.send(ProgressEvent::Finish);
     }
 
-    fn set_message(&self, msg: &str) {
-        let _ = self.tx.send(ProgressEvent::SetMessage(msg.to_string()));
+    fn set_message(&self, _msg: &str) {
+        // let _ = self.tx.send(ProgressEvent::SetMessage(msg.to_string()));
     }
 
     fn finish_with_message(&self, msg: &str) {

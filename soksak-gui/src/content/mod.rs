@@ -241,7 +241,8 @@ impl Content {
             let profile = job.read(cx).profile.to_string();
 
             let progress_tx = self.progress_tx.clone();
-            let gui_progress = GuiProgress::new(progress_tx);
+            let gui_progress =
+                GuiProgress::new(progress_tx, &rust_i18n::t!("progress.transcribing"));
 
             let (tx, rx) = tokio::sync::oneshot::channel();
             self.cancel_tx = Some(tx);
