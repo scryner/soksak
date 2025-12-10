@@ -8,6 +8,30 @@ use std::process::Command;
 use std::process::Stdio;
 use tempfile::NamedTempFile;
 
+// Helper to find ffmpeg executable
+fn find_ffmpeg() -> Result<std::path::PathBuf> {
+    // 1. Try "ffmpeg" from PATH
+    if let Ok(path) = which::which("ffmpeg") {
+        return Ok(path);
+    }
+
+    // 2. Try common macOS paths
+    let common_paths = [
+        "/opt/homebrew/bin/ffmpeg", // Apple Silicon Homebrew
+        "/usr/local/bin/ffmpeg",    // Intel Homebrew / Standard
+        "/usr/bin/ffmpeg",          // System (rare on modern macOS)
+    ];
+
+    for path in common_paths {
+        let p = std::path::PathBuf::from(path);
+        if p.exists() {
+            return Ok(p);
+        }
+    }
+
+    Err(anyhow!("ffmpeg not found. Please install ffmpeg."))
+}
+
 // ffmpeg -i input.mp3 -ar 16000 output.wav
 fn use_ffmpeg<P: AsRef<Path>>(input_path: P, pb: &impl Progress) -> Result<NamedTempFile> {
     // println!("Using ffmpeg to convert audio file");
@@ -15,7 +39,9 @@ fn use_ffmpeg<P: AsRef<Path>>(input_path: P, pb: &impl Progress) -> Result<Named
     let temp_file = NamedTempFile::with_suffix(".wav")?;
     let temp_path = temp_file.path();
 
-    let mut child = Command::new("ffmpeg")
+    let ffmpeg_path = find_ffmpeg()?;
+
+    let mut child = Command::new(ffmpeg_path)
         .args([
             "-i",
             input_path
