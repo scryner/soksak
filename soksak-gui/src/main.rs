@@ -21,9 +21,18 @@ fn main() {
 
     // Start the application
     Application::new()
-        .with_assets(crate::assets::Assets::new(std::path::PathBuf::from(
-            "soksak-gui/assets",
-        )))
+        .with_assets(crate::assets::Assets::new(
+            if let Ok(exe_path) = std::env::current_exe() {
+                let bundle_assets = exe_path.parent().unwrap().join("../Resources/assets");
+                if bundle_assets.exists() {
+                    bundle_assets
+                } else {
+                    std::path::PathBuf::from("soksak-gui/assets")
+                }
+            } else {
+                std::path::PathBuf::from("soksak-gui/assets")
+            },
+        ))
         .run(|cx: &mut App| {
             let bounds = Bounds::centered(None, size(px(1080.), px(720.)), cx);
 

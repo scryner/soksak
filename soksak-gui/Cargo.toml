@@ -3,7 +3,6 @@ name = "soksak-gui"
 version = "0.1.0"
 edition = "2024"
 
-
 [dependencies]
 gpui = "0.2.2"
 rfd = "0.16.0"
@@ -16,3 +15,14 @@ dirs = "5.0"
 soksak-lib = { path = "../soksak-lib", features = ["full"] }
 async-channel = "2.5.0"
 tokio = { version = "1.42.0", features = ["full"] }
+
+[package.metadata.bundle]
+name = "Soksak"
+identifier = "io.github.scryner.soksak"
+icon = ["assets/icon.icns"]
+version = "0.1.0"
+resources = ["assets/icons"]
+copyright = "Copyright (c) 2025 Scryner"
+category = "Productivity"
+short_description = "Soksak"
+long_description = "A GUI application for Soksak that provides audio transcription and translation features."

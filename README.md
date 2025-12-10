@@ -14,17 +14,29 @@ It uses Whisper for speech-to-text and supports translation via LLM or Apple's T
 - Generates output in JSON (transcript, translation) and SRT subtitle formats
 - Progress indication with `indicatif` progress bars
 
-# Installation
+# Build
+
+## CLI
 ```sh
 # Clone the repository
 git clone https://github.com/scryner/soksak.git
 cd soksak
 
-# Build the project (requires Rust and Cargo)
+# Build the project (requires Rust)
 cargo build --release
 ```
 
-# Usage
+## GUI
+```sh
+# Clone the repository
+git clone https://github.com/scryner/soksak.git
+cd soksak/soksak-gui
+
+# Build the project (requires Rust and cargo-bundle)
+cargo bundle --release
+```
+
+# Usage (CLI)
 
 ## Run Command (Transcribe + Translate)
 Transcribes a video/audio file and optionally translates the result.
