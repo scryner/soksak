@@ -39,10 +39,10 @@ impl Progress for GuiProgress {
         // let _ = self.tx.send(ProgressEvent::SetMessage(msg.to_string()));
     }
 
-    fn finish_with_message(&self, msg: &str) {
-        let _ = self
-            .tx
-            .send(ProgressEvent::FinishWithMessage(msg.to_string()));
+    fn finish_with_message(&self, _msg: &str) {
+        // let _ = self
+        //     .tx
+        //     .send(ProgressEvent::FinishWithMessage(msg.to_string()));
     }
 
     fn set_length(&self, len: u64) {
