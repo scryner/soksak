@@ -56,5 +56,7 @@ fn main() {
             cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
 
             cx.activate(true);
+
+            cx.on_window_closed(|cx| cx.quit()).detach();
         });
 }
