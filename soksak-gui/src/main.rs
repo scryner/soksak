@@ -10,7 +10,7 @@ mod sidebar;
 mod socsak_app;
 
 rust_i18n::i18n!("assets");
-actions!(soksak_gui, [Quit]);
+actions!(soksak_gui, [Quit, About]);
 
 pub mod progress;
 
@@ -34,6 +34,14 @@ fn main() {
             },
         ))
         .run(|cx: &mut App| {
+            cx.set_menus(vec![Menu {
+                name: "Soksak".into(),
+                items: vec![
+                    MenuItem::action("About Soksak", About),
+                    MenuItem::separator(),
+                    MenuItem::action("Quit Soksak", Quit),
+                ],
+            }]);
             let bounds = Bounds::centered(None, size(px(1080.), px(720.)), cx);
 
             cx.open_window(
@@ -47,16 +55,66 @@ fn main() {
                 },
                 |_, app| {
                     let profile_manager = crate::profile::ProfileManager::new(app);
-                    app.new(|inner| SoksakApp::new(inner, profile_manager))
+                    app.new(|inner| {
+                        inner.on_release(|_, cx| cx.quit()).detach();
+                        SoksakApp::new(inner, profile_manager)
+                    })
                 },
             )
             .expect("failed to open window");
 
             cx.on_action(|_: &Quit, cx| cx.quit());
+            cx.on_action(|_: &About, cx| {
+                cx.open_window(
+                    WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                            None,
+                            size(px(300.), px(200.)),
+                            cx,
+                        ))),
+                        titlebar: Some(TitlebarOptions {
+                            title: Some("About Soksak".into()),
+                            appears_transparent: true,
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    |_, cx| cx.new(|_| AboutView),
+                )
+                .ok();
+            });
             cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
 
             cx.activate(true);
-
-            cx.on_window_closed(|cx| cx.quit()).detach();
         });
+}
+
+struct AboutView;
+
+impl Render for AboutView {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .size_full()
+            .bg(rgb(0xffffff))
+            .text_color(rgb(0x000000))
+            .child(
+                div()
+                    .text_xl()
+                    .font_weight(FontWeight::BOLD)
+                    .mb_2()
+                    .child("Soksak"),
+            )
+            .child(div().text_sm().child("AI powered audio tool"))
+            .child(
+                div()
+                    .text_xs()
+                    .mt_4()
+                    .text_color(rgb(0x888888))
+                    .child(format!("v{}", env!("CARGO_PKG_VERSION"))),
+            )
+    }
 }
