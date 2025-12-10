@@ -30,6 +30,7 @@ pub struct Content {
     menu_position: Option<Point<Pixels>>,
     progress_tx: Sender<ProgressEvent>,
     cancel_flag: Arc<AtomicBool>,
+    cancel_tx: Option<tokio::sync::oneshot::Sender<()>>,
     is_processing: bool,
 
     progress_total: Option<u64>,
@@ -96,6 +97,7 @@ impl Content {
                 menu_position: None,
                 progress_tx: tx,
                 cancel_flag,
+                cancel_tx: None,
                 is_processing: false,
 
                 progress_total: None,
@@ -200,6 +202,10 @@ impl Content {
         self.cancel_flag.store(true, Ordering::SeqCst);
         self.is_processing = false;
 
+        if let Some(tx) = self.cancel_tx.take() {
+            let _ = tx.send(());
+        }
+
         // Find current processing job and mark as Canceling
         self.job_list.update(cx, |list, cx| {
             list.mark_processing_as_canceling(cx);
@@ -237,6 +243,9 @@ impl Content {
             let progress_tx = self.progress_tx.clone();
             let gui_progress = GuiProgress::new(progress_tx);
 
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            self.cancel_tx = Some(tx);
+
             // Spawn background work
             cx.spawn(|this: gpui::WeakEntity<Content>, cx: &mut gpui::AsyncApp| {
                 let cx = cx.clone();
@@ -244,7 +253,8 @@ impl Content {
                     let result = cx
                         .background_executor()
                         .spawn(async move {
-                            crate::content::process_task::run_job(path, profile, gui_progress).await
+                            crate::content::process_task::run_job(path, profile, gui_progress, rx)
+                                .await
                         })
                         .await;
 

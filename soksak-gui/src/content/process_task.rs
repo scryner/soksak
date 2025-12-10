@@ -12,6 +12,7 @@ pub async fn run_job(
     input_path: PathBuf,
     profile_name: String,
     progress: impl Progress + Clone + Send + Sync + 'static,
+    cancel_rx: tokio::sync::oneshot::Receiver<()>,
 ) -> Result<()> {
     let (tx, rx) = async_channel::bounded(1);
 
@@ -21,7 +22,12 @@ pub async fn run_job(
             .build();
 
         let result = match rt {
-            Ok(rt) => rt.block_on(run_job_inner(input_path, profile_name, progress)),
+            Ok(rt) => rt.block_on(async {
+                tokio::select! {
+                    res = run_job_inner(input_path, profile_name, progress) => res,
+                    _ = cancel_rx => Err(anyhow::anyhow!("Job canceled")),
+                }
+            }),
             Err(e) => Err(e.into()),
         };
 
