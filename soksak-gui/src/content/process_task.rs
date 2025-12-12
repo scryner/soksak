@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use config::{Language, TranscriptionEngine, WhisperConfig};
-use rust_i18n::t;
 use soksak_lib::progress::Progress;
 use soksak_lib::{config, output, transcribe, translate};
 use std::path::PathBuf;
@@ -68,8 +67,6 @@ async fn run_job_inner(
     let parent_dir = input_path.parent().unwrap();
 
     // 2. Transcribe
-    progress.set_message(&t!("progress.transcribing"));
-
     let whisper_conf = match &run_config {
         Some(config) => match &config.whisper {
             Some(conf) => conf.clone(),
@@ -133,7 +130,6 @@ async fn run_job_inner(
     if let Some(rc) = run_config {
         if let Some(tc) = rc.translation {
             progress.set_position(0);
-            progress.set_message(&t!("progress.translating"));
             // Translate progress needs valid length.
             // GuiProgress needs to handle `set_length`?
             // Progress trait has no set_length. It has `inc` and `set_position`.

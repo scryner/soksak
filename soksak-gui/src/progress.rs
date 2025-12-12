@@ -1,3 +1,4 @@
+use rust_i18n::t;
 use soksak_lib::progress::Progress;
 use std::sync::mpsc::Sender;
 
@@ -16,8 +17,7 @@ pub struct GuiProgress {
 }
 
 impl GuiProgress {
-    pub fn new(tx: Sender<ProgressEvent>, message: &str) -> Self {
-        let _ = tx.send(ProgressEvent::SetMessage(message.to_string()));
+    pub fn new(tx: Sender<ProgressEvent>) -> Self {
         Self { tx }
     }
 }
@@ -35,8 +35,25 @@ impl Progress for GuiProgress {
         let _ = self.tx.send(ProgressEvent::Finish);
     }
 
-    fn set_message(&self, _msg: &str) {
-        // let _ = self.tx.send(ProgressEvent::SetMessage(msg.to_string()));
+    fn set_message(&self, msg: &str) {
+        match msg {
+            "Extracting audio..." => {
+                let _ = self.tx.send(ProgressEvent::SetMessage(
+                    (t!("progress.extracting_audio")).to_string(),
+                ));
+            }
+            "Transcribing..." => {
+                let _ = self.tx.send(ProgressEvent::SetMessage(
+                    (t!("progress.transcribing")).to_string(),
+                ));
+            }
+            "Translating..." => {
+                let _ = self.tx.send(ProgressEvent::SetMessage(
+                    (t!("progress.translating")).to_string(),
+                ));
+            }
+            _ => (),
+        }
     }
 
     fn finish_with_message(&self, _msg: &str) {

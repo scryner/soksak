@@ -32,7 +32,7 @@ btn.remove:
 progress.ready:
   en: Ready
   ko: 준비
-progress.extract_audio:
+progress.extracting_audio:
   en: Extracting Audio...
   ko: 오디오 추출 중...
 progress.transcribing:
