@@ -236,6 +236,9 @@ impl Content {
                 list.mark_job_status(job.clone(), Status::Processing, cx);
             });
 
+            self.progress_total = None;
+            self.progress_current = 0;
+
             let path_str = job.read(cx).get_path();
             let path = std::path::PathBuf::from(path_str);
             let profile = job.read(cx).profile.to_string();
