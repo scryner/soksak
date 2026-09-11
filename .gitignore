@@ -137,3 +137,7 @@ iOSInjectionProject/
 # End of https://www.toptal.com/developers/gitignore/api/rust,macos,swift
 
 test_conf.yaml
+
+# Local alignment runtime/test artifacts
+__pycache__/
+*.pyc

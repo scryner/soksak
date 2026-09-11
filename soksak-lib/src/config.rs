@@ -481,6 +481,47 @@ pub struct WhisperConfig {
     pub vad: Option<bool>,
     pub temperature: Option<f32>,
     pub default_language: Option<Language>,
+    /// Absolute input stream index, as reported by ffprobe.
+    pub audio_stream: Option<u32>,
+    #[serde(default)]
+    pub alignment: AlignmentConfig,
+}
+
+#[derive(Debug, Deserialize, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AlignmentMode {
+    #[default]
+    Auto,
+    Required,
+    Off,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(default)]
+pub struct AlignmentConfig {
+    pub mode: AlignmentMode,
+    pub python: Option<PathBuf>,
+    pub model: Option<String>,
+    pub search_padding_seconds: f64,
+    pub max_shift_seconds: f64,
+    pub min_score: f64,
+    pub min_coverage: f64,
+    pub timeout_seconds: u64,
+}
+
+impl Default for AlignmentConfig {
+    fn default() -> Self {
+        Self {
+            mode: AlignmentMode::Auto,
+            python: None,
+            model: None,
+            search_padding_seconds: 1.0,
+            max_shift_seconds: 2.0,
+            min_score: 0.3,
+            min_coverage: 0.8,
+            timeout_seconds: 1800,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Clone)]

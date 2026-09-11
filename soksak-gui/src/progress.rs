@@ -37,7 +37,7 @@ impl Progress for GuiProgress {
 
     fn set_message(&self, msg: &str) {
         match msg {
-            "Extracting audio..." => {
+            "Extracting audio..." | "Extracting audio on the video timeline..." => {
                 let _ = self.tx.send(ProgressEvent::SetMessage(
                     (t!("progress.extracting_audio")).to_string(),
                 ));
@@ -47,12 +47,29 @@ impl Progress for GuiProgress {
                     (t!("progress.transcribing")).to_string(),
                 ));
             }
+            "Detecting speech..." => {
+                let _ = self.tx.send(ProgressEvent::SetMessage(
+                    (t!("progress.detecting_speech")).to_string(),
+                ));
+            }
+            "Aligning transcript to audio..." => {
+                let _ = self.tx.send(ProgressEvent::SetMessage(
+                    (t!("progress.aligning")).to_string(),
+                ));
+            }
+            "Alignment unavailable; original timing retained (see timing report)" => {
+                let _ = self.tx.send(ProgressEvent::SetMessage(
+                    (t!("progress.alignment_unavailable")).to_string(),
+                ));
+            }
             "Translating..." => {
                 let _ = self.tx.send(ProgressEvent::SetMessage(
                     (t!("progress.translating")).to_string(),
                 ));
             }
-            _ => (),
+            _ => {
+                let _ = self.tx.send(ProgressEvent::SetMessage(msg.to_string()));
+            }
         }
     }
 
