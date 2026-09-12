@@ -7,6 +7,7 @@ It uses Whisper for speech-to-text and supports translation via LLM or Apple's T
 
 # Features
 - **Transcription** using Whisper with automatic or user-specified language detection
+- **Timing refinement** using local forced alignment while preserving the transcription text
 - **Translation** using either LLM (OpenAI, Ollama, Claude, Gemini) or Apple's Translation framework
 - **Post-processing** with customizable editing instructions and filtering
 - **Two workflows**: Full pipeline (transcribe + translate) or translate-only from existing transcript
@@ -49,10 +50,10 @@ soksak run <input_video_file>
 soksak run <input_video_file> --lang ja
 
 # Transcription with translation (requires config file)
-soksak run <input_video_file> --conf <config.yaml>
+soksak run <input_video_file> --profile ./config.yaml
 
 # Transcription with translation and specific language
-soksak run <input_video_file> --conf <config.yaml> --lang ko
+soksak run <input_video_file> --profile ./config.yaml --lang ko
 ```
 
 ## Translate Command (Translation Only)
@@ -60,10 +61,10 @@ Translates an existing `.transcript.json` file without re-transcribing.
 
 ```sh
 # Translate from existing transcript
-soksak translate <input.transcript.json> --conf <config.yaml>
+soksak translate <input.transcript.json> --profile ./config.yaml
 
 # Translate with specific source language
-soksak translate <input.transcript.json> --conf <config.yaml> --lang ja
+soksak translate <input.transcript.json> --profile ./config.yaml --lang ja
 ```
 
 ## Command-line Arguments
@@ -72,14 +73,14 @@ soksak translate <input.transcript.json> --conf <config.yaml> --lang ja
 | Argument | Description |
 |----------|-------------|
 | `input`  | Path to the input video/audio file (required) |
-| `--conf, -c` | Optional path to a run-specific configuration file (YAML) |
+| `--profile, -p` | Optional profile name in `~/.soksak/profiles/`, or a YAML path starting with `./`, `../`, `~/`, or `/` |
 | `--lang, -l` | Input language (default: `auto`). Use ISO 639-1 codes (e.g., `en`, `ja`, `ko`) |
 
 ### `translate` subcommand
 | Argument | Description |
 |----------|-------------|
 | `input`  | Path to the `.transcript.json` file (required) |
-| `--conf, -c` | Path to a run-specific configuration file (YAML, required) |
+| `--profile, -p` | Profile name or YAML path (required) |
 | `--lang, -l` | Source language (default: `auto`). Use ISO 639-1 codes |
 
 # Configuration
@@ -143,8 +144,130 @@ A YAML file that specifies Whisper overrides and translation settings.
 - `beam_size`: Beam search size (optional)
 - `patience`: Patience parameter for beam search (optional)
 - `initial_prompt`: Initial prompt to guide transcription (optional)
-- `vad`: Enable Voice Activity Detection (optional, boolean)
+- `vad`: Detect and transcribe speech windows at their original audio positions (default: `true`)
 - `temperature`: Temperature parameter for sampling (optional, float)
+- `audio_stream`: Absolute audio stream index from `ffprobe` (optional; defaults to the marked default audio stream, then the first audio stream)
+- `alignment`: Local timing refinement settings described below (WhisperCpp only)
+
+### Improving subtitle timing (WhisperCpp)
+
+The Whisper model remains responsible for transcription. FFmpeg decodes a 16 kHz mono
+PCM timeline relative to the container's playback start, preserving delayed audio and
+filling gaps in audio packet timestamps with silence. Both transcription and alignment
+use these exact samples. FFmpeg **and ffprobe** must be installed (on macOS: `brew install ffmpeg`).
+
+Silero VAD locates speech on that timeline. Each window is decoded from the original
+PCM, and its absolute start is added to Whisper's timestamps. Short gaps within a window
+remain intact; long gaps are skipped without compressing the timeline. This avoids the
+built-in VAD timestamp remapping in the bundled whisper.cpp version, including
+[the overlap mapping bug fixed upstream in #3711](https://github.com/ggml-org/whisper.cpp/pull/3711).
+Changing VAD windows can affect Whisper's segmentation and recognition context; the
+subsequent alignment step preserves text and segment count exactly.
+
+Install the optional alignment runtime once:
+
+```sh
+python3 scripts/setup_alignment.py
+```
+
+With `uv` installed, the script creates a Python 3.12 environment. Otherwise, run it with
+Python 3.10–3.13. The default location is `~/.soksak/alignment-venv`. This does not modify
+system Python. WhisperX's language-specific CTC model aligns the existing text; its speech
+recognition and diarization pipelines are not used. By default it uses CUDA when available,
+Apple GPU (MPS) on supported Macs, and CPU otherwise. An accelerator failure in `device: auto`
+retries on CPU and records the reason. Language models download on first use, then load
+from the local cache without a Hugging Face network check. Audio and transcripts stay local.
+
+```yaml
+whisper:
+  vad: true
+  # audio_stream: 1  # Absolute input stream index, NOT the audio-only ordinal
+  alignment:
+    mode: auto
+    device: auto  # auto, cpu, mps, cuda
+    preserve_original_end: true
+    end_padding_seconds: 0.2
+    search_padding_seconds: 1.0
+    max_shift_seconds: 2.0
+    min_score: 0.3
+    min_coverage: 0.8
+    timeout_seconds: 1800
+    # python: /absolute/path/to/venv/bin/python
+    # model: organization/language-specific-ctc-model
+```
+
+These are the defaults, including when `alignment` is omitted from an existing profile.
+`auto` attempts alignment and retains the original timing if the runtime/model is
+unavailable. `required` stops the run on runtime/model/protocol failure, with the raw
+transcript already saved. `off` skips alignment while keeping the extraction and VAD
+timeline fixes. In both `auto` and `required`, individual uncertain segments retain
+their original timing. Unsupported languages need a compatible CTC `model` override;
+otherwise the selected failure policy applies. For multilingual audio, use an explicit
+source language where possible; automatic detection selects the first window's language.
+
+The Python executable is selected from `alignment.python`, then
+`SOKSAK_ALIGNMENT_PYTHON`, then the default environment, then `python3` on PATH.
+For a custom installation location, use `python3 scripts/setup_alignment.py --venv /path/to/venv`
+and set `alignment.python` accordingly. Both CLI and GUI read these profile settings.
+
+The aligner searches within a padded segment window bounded by neighboring transcript
+midpoints. It requires scored first/last spoken characters, sufficient character coverage,
+and a minimum mean acoustic score. This score is a heuristic, not a calibrated probability.
+Invalid ranges, excessive shifts and new overlaps/order reversals are rejected. Search
+windows over 90 seconds are left unchanged. The `.timing.json` report records each
+segment's original and final times, score, coverage, and acceptance/fallback reason.
+
+An acoustic character boundary can precede the end of the final spoken sound. To avoid
+captions disappearing mid-speech, accepted alignments retain at least the original Whisper
+end time by default and add up to 200 ms of display time. The tail stops at the next caption,
+the audio end, or the configured shift limit. Rejected alignments keep the original range.
+Set `preserve_original_end: false` to permit shorter end times, and `end_padding_seconds: 0`
+for acoustic boundaries without a display tail. The report separates `acoustic_start` /
+`acoustic_end` from final display times and records `end_preserved` / `end_padding_cs`.
+
+The GUI shows model preparation separately and updates alignment progress after each
+segment. Report version 2 includes `alignment_seconds` and `runtime` (device, model,
+model-load time, processing time, and any CPU fallback). The first GPU inference can take
+longer while kernels are prepared. Rust debug/release builds use the same separate Python
+alignment runtime, so a release GUI alone does not accelerate a CPU-only alignment setting.
+
+For an optimized GUI build, run from the repository root:
+
+```sh
+cargo run --release -p soksak-gui --features gpui/runtime_shaders
+```
+
+`runtime_shaders` lets GPUI compile shaders when the app starts, which also works when
+Xcode's optional Metal command-line toolchain is not installed.
+
+### Checking timing changes
+
+Compare `.raw.transcript.json` against `.transcript.json` for the alignment-only change;
+their text and segment count must match. For a VAD comparison, run separate profiles
+with `vad: true` and `vad: false`, using `alignment.mode: off`, and preserve each run's
+outputs before the next run. Output sidecar files are replaced when rerunning the same input.
+Use representative clips with long pauses, quiet speech, music and overlapping voices.
+Manually label speech starts/ends to measure median and 95th-percentile absolute boundary
+error; a high alignment acceptance rate alone does not establish timing accuracy.
+
+Regression checks (FFmpeg/ffprobe required):
+
+```sh
+cargo test -p soksak-lib -p soksak-cli
+python3 scripts/test_alignment.py
+
+# Optional real-model test; uses only the local model specified here.
+SOKSAK_TEST_MODEL=/absolute/path/to/ggml-large-v3-turbo.bin \
+  cargo test -p soksak-lib --test transcription_sync -- --ignored --nocapture --test-threads=1
+```
+
+The real-model tests insert a 30-second silence between repeated speech. With VAD enabled,
+they check absolute offsets, text preservation and actual alignment acceptance. The VAD-off
+control checks text preservation and the correction/fallback policy: without speech windows,
+Whisper can anchor a caption at the beginning of a silent 30-second chunk. Corrections beyond
+`max_shift_seconds` deliberately retain those raw times, so alignment alone cannot guarantee
+good timing with VAD disabled. These are regression checks, not a benchmark against manually
+annotated speech boundaries.
 
 #### `translation.translate`
 - `engine`: Translation engine configuration
@@ -215,9 +338,15 @@ translation:
 # Output Files
 After execution, the following files are generated in the same directory as the input:
 
-- `<filename>.transcript.json` – Raw transcription segments with timestamps
+- `<filename>.raw.transcript.json` – WhisperCpp transcription before alignment
+- `<filename>.timing.json` – WhisperCpp timing diagnostics and per-segment alignment decisions
+- `<filename>.transcript.json` – Final transcription segments with refined timestamps (or original times where alignment was unavailable/rejected)
 - `<filename>.translation.json` – Translated segments (if translation is configured)
 - `<filename>.srt` – Subtitles in SRT format (if translation is configured)
+
+JSON timestamps use centiseconds (1/100 second). SRT converts these to milliseconds once.
+Translation retains the final transcription boundaries; SRT output rejects invalid or
+reversed ranges before writing the file.
 
 # License
 This project is licensed under the MIT License. See `LICENSE` for details.

@@ -18,6 +18,7 @@ pub fn save_translation_json(path: &Path, segments: &[TranslatedSegment]) -> Res
 }
 
 pub fn save_srt(path: &Path, segments: &[TranslatedSegment]) -> Result<()> {
+    crate::transcribe::validate_timestamps(segments.iter().map(|s| (s.start, s.end)))?;
     let mut file = File::create(path)?;
 
     for (i, segment) in segments.iter().enumerate() {
@@ -43,4 +44,25 @@ pub fn format_timestamp(cs: i64) -> String {
     let millis = ms % 1000;
 
     format!("{:02}:{:02}:{:02},{:03}", hours, minutes, seconds, millis)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn srt_keeps_refined_centiseconds_and_rejects_invalid_input_before_overwriting() {
+        let path = tempfile::NamedTempFile::new().unwrap();
+        let mut segments = vec![TranslatedSegment {
+            start: 123,
+            end: 278,
+            original: "Original".into(),
+            translated: "번역".into(),
+        }];
+        save_srt(path.path(), &segments).unwrap();
+        let expected = "1\n00:00:01,230 --> 00:00:02,780\n번역\n\n";
+        assert_eq!(std::fs::read_to_string(path.path()).unwrap(), expected);
+        segments[0].end = 100;
+        assert!(save_srt(path.path(), &segments).is_err());
+        assert_eq!(std::fs::read_to_string(path.path()).unwrap(), expected);
+    }
 }

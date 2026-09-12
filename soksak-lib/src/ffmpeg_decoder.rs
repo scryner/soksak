@@ -1,154 +1,218 @@
 use crate::progress::Progress;
-use anyhow::{anyhow, Result};
-use audrey::Reader;
-use regex::Regex;
-use std::io::{BufReader, Read};
-use std::path::Path;
-use std::process::Command;
-use std::process::Stdio;
+use anyhow::{anyhow, bail, Context, Result};
+use serde::Deserialize;
+use std::io::{BufRead, BufReader};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use tempfile::NamedTempFile;
 
-// Helper to find ffmpeg executable
-fn find_ffmpeg() -> Result<std::path::PathBuf> {
-    // 1. Try "ffmpeg" from PATH
-    if let Ok(path) = which::which("ffmpeg") {
-        return Ok(path);
-    }
+pub const SAMPLE_RATE: usize = 16_000;
 
-    // 2. Try common macOS paths
-    let common_paths = [
-        "/opt/homebrew/bin/ffmpeg", // Apple Silicon Homebrew
-        "/usr/local/bin/ffmpeg",    // Intel Homebrew / Standard
-        "/usr/bin/ffmpeg",          // System (rare on modern macOS)
-    ];
-
-    for path in common_paths {
-        let p = std::path::PathBuf::from(path);
-        if p.exists() {
-            return Ok(p);
-        }
-    }
-
-    Err(anyhow!("ffmpeg not found. Please install ffmpeg."))
+pub struct ExtractedAudio {
+    pub file: NamedTempFile,
+    pub samples: Vec<f32>,
+    pub stream_index: u32,
+    pub timeline_origin_seconds: f64,
 }
 
-// ffmpeg -i input.mp3 -ar 16000 output.wav
-fn use_ffmpeg<P: AsRef<Path>>(input_path: P, pb: &impl Progress) -> Result<NamedTempFile> {
-    // println!("Using ffmpeg to convert audio file");
+impl ExtractedAudio {
+    pub fn duration_cs(&self) -> i64 {
+        (self.samples.len() * 100 / SAMPLE_RATE) as i64
+    }
+}
 
-    let temp_file = NamedTempFile::with_suffix(".wav")?;
-    let temp_path = temp_file.path();
+fn find_tool(name: &str) -> Result<PathBuf> {
+    if let Ok(path) = which::which(name) {
+        return Ok(path);
+    }
+    for dir in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"] {
+        let path = Path::new(dir).join(name);
+        if path.is_file() {
+            return Ok(path);
+        }
+    }
+    bail!("{name} not found. Please install FFmpeg (including ffprobe).")
+}
 
-    let ffmpeg_path = find_ffmpeg()?;
+#[derive(Deserialize)]
+struct Probe {
+    streams: Vec<Stream>,
+    format: Format,
+}
+#[derive(Deserialize)]
+struct Stream {
+    index: u32,
+    codec_type: String,
+    start_time: Option<String>,
+    #[serde(default)]
+    disposition: Disposition,
+}
+#[derive(Deserialize, Default)]
+struct Disposition {
+    #[serde(default)]
+    default: u32,
+}
+#[derive(Deserialize)]
+struct Format {
+    start_time: Option<String>,
+    duration: Option<String>,
+}
 
-    let mut child = Command::new(ffmpeg_path)
+fn finite_time(value: Option<&str>) -> Option<f64> {
+    value?.parse::<f64>().ok().filter(|x| x.is_finite())
+}
+
+impl Probe {
+    fn audio_stream(&self, requested: Option<u32>) -> Result<u32> {
+        let audio: Vec<_> = self
+            .streams
+            .iter()
+            .filter(|s| s.codec_type == "audio")
+            .collect();
+        if let Some(index) = requested {
+            return audio
+                .iter()
+                .find(|s| s.index == index)
+                .map(|s| s.index)
+                .ok_or_else(|| anyhow!("Input stream {index} is not an audio stream"));
+        }
+        audio
+            .iter()
+            .find(|s| s.disposition.default != 0)
+            .or_else(|| audio.first())
+            .map(|s| s.index)
+            .ok_or_else(|| anyhow!("Input has no audio stream"))
+    }
+
+    fn origin(&self) -> f64 {
+        finite_time(self.format.start_time.as_deref()).unwrap_or_else(|| {
+            self.streams
+                .iter()
+                .filter(|s| matches!(s.codec_type.as_str(), "audio" | "video"))
+                .filter_map(|s| finite_time(s.start_time.as_deref()))
+                .min_by(f64::total_cmp)
+                .unwrap_or(0.0)
+        })
+    }
+}
+
+/// Decode on the container's playback timeline, not the first audio packet's timeline.
+/// PTS gaps become PCM silence; all downstream engines share these exact samples.
+pub fn extract<P: AsRef<Path>>(
+    input: P,
+    stream: Option<u32>,
+    pb: &impl Progress,
+) -> Result<ExtractedAudio> {
+    let input = input.as_ref();
+    let probe_output = Command::new(find_tool("ffprobe")?)
         .args([
+            "-v",
+            "error",
+            "-show_streams",
+            "-show_format",
+            "-of",
+            "json",
+        ])
+        .arg(input)
+        .stdin(Stdio::null())
+        .output()
+        .context("Failed to run ffprobe")?;
+    if !probe_output.status.success() {
+        bail!(
+            "ffprobe failed: {}",
+            String::from_utf8_lossy(&probe_output.stderr)
+        );
+    }
+    let probe: Probe =
+        serde_json::from_slice(&probe_output.stdout).context("Invalid ffprobe output")?;
+    let stream_index = probe.audio_stream(stream)?;
+    let origin = probe.origin();
+    let duration = finite_time(probe.format.duration.as_deref()).filter(|d| *d > 0.0);
+    let file = NamedTempFile::with_suffix(".wav")?;
+    let filter =
+        format!("asetpts=PTS-({origin:.9})/TB,aresample={SAMPLE_RATE}:async=1:first_pts=0");
+    let mut child = Command::new(find_tool("ffmpeg")?)
+        .args([
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-nostdin",
+            "-y",
+            "-copyts",
             "-i",
-            input_path
-                .as_ref()
-                .to_str()
-                .ok_or_else(|| anyhow!("invalid path"))?,
-            "-ar",
-            "16000",
+        ])
+        .arg(input)
+        .args([
+            "-map",
+            &format!("0:{stream_index}"),
+            "-vn",
+            "-af",
+            &filter,
             "-ac",
             "1",
             "-c:a",
             "pcm_s16le",
-            temp_path.to_str().unwrap(),
-            "-hide_banner",
-            "-y",
-            "-loglevel",
-            "info", // Need info to see progress
             "-progress",
             "pipe:2",
         ])
+        .arg(file.path())
         .stdin(Stdio::null())
+        .stdout(Stdio::null())
         .stderr(Stdio::piped())
-        .spawn()?;
-
-    let stderr = child.stderr.take().ok_or_else(|| anyhow!("no stderr"))?;
-    let mut reader = BufReader::new(stderr);
-
-    let re_duration = Regex::new(r"Duration: (\d{2}):(\d{2}):(\d{2})\.(\d{2})").unwrap();
-    // Key-value parsing does not strictly require regex, but we will search for the specific line
-
-    let mut total_duration_secs: Option<f64> = None;
-    let mut buffer = Vec::new();
-    let mut byte_buf = [0u8; 1];
-
-    // Read byte by byte to handle both \r and \n properly
-    loop {
-        match reader.read(&mut byte_buf) {
-            Ok(0) => break, // EOF
-            Ok(_) => {
-                let b = byte_buf[0];
-                if b == b'\r' || b == b'\n' {
-                    if !buffer.is_empty() {
-                        let line = String::from_utf8_lossy(&buffer);
-
-                        // Parse Total Duration
-                        if total_duration_secs.is_none() {
-                            if let Some(caps) = re_duration.captures(&line) {
-                                if let (Ok(hours), Ok(mins), Ok(secs), Ok(centis)) = (
-                                    caps[1].parse::<f64>(),
-                                    caps[2].parse::<f64>(),
-                                    caps[3].parse::<f64>(),
-                                    caps[4].parse::<f64>(),
-                                ) {
-                                    total_duration_secs =
-                                        Some(hours * 3600.0 + mins * 60.0 + secs + centis / 100.0);
-                                }
-                            }
-                        }
-
-                        // Parse out_time_us for progress
-                        if let Some(total) = total_duration_secs {
-                            if line.starts_with("out_time_us=") {
-                                let val_str = &line["out_time_us=".len()..];
-                                if let Ok(us) = val_str.trim().parse::<i64>() {
-                                    let current_secs = us as f64 / 1_000_000.0;
-                                    if current_secs >= 0.0 {
-                                        let progress = (current_secs / total * 100.0) as u64;
-                                        pb.set_position(progress.min(100));
-                                    }
-                                }
-                            }
-                        }
-
-                        buffer.clear();
-                    }
-                } else {
-                    buffer.push(b);
-                }
+        .spawn()
+        .context("Failed to run ffmpeg")?;
+    let mut errors = std::collections::VecDeque::new();
+    let stderr = child.stderr.take().context("Missing ffmpeg stderr")?;
+    for line in BufReader::new(stderr).lines() {
+        let line = match line {
+            Ok(line) => line,
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(error.into());
             }
-            Err(_) => break, // Error
+        };
+        if let (Some(value), Some(total)) = (line.strip_prefix("out_time_us="), duration) {
+            if let Ok(us) = value.parse::<f64>() {
+                pb.set_position((100.0 * us / 1_000_000.0 / total).clamp(0.0, 100.0) as u64);
+            }
+        } else if !line.contains('=') {
+            if errors.len() == 16 {
+                errors.pop_front();
+            }
+            errors.push_back(line);
         }
     }
-
-    if child.wait()?.success() {
-        // println!("Audio file converted successfully");
-        // Don't finish the progress bar here. The caller should do it.
-        // soksak-lib/src/transcribe/whisper_cpp/mod.rs does call finish_with_message("Audio extracted")
-        Ok(temp_file)
-    } else {
-        Err(anyhow!("unable to convert file"))
+    if !child.wait()?.success() {
+        bail!(
+            "FFmpeg audio extraction failed: {}",
+            errors.into_iter().collect::<Vec<_>>().join("\n")
+        );
     }
+    let mut reader = hound::WavReader::open(file.path())?;
+    let spec = reader.spec();
+    if spec.sample_rate != SAMPLE_RATE as u32 || spec.channels != 1 || spec.bits_per_sample != 16 {
+        bail!("Unexpected decoded PCM format");
+    }
+    let samples = reader
+        .samples::<i16>()
+        .map(|s| s.map(|s| s as f32 / 32768.0))
+        .collect::<Result<Vec<_>, _>>()?;
+    if samples.is_empty() {
+        bail!("Input contains no audio samples");
+    }
+    Ok(ExtractedAudio {
+        file,
+        samples,
+        stream_index,
+        timeline_origin_seconds: origin,
+    })
 }
 
-pub fn read_file<P: AsRef<Path>>(audio_file_path: P, pb: &impl Progress) -> Result<Vec<f32>> {
-    let temp_file = use_ffmpeg(&audio_file_path, pb)?;
-
-    let mut reader = Reader::new(temp_file.reopen()?)?;
-    let audio_buf: Vec<i16> = reader.samples().collect::<Result<_, _>>()?;
-    let mut output = vec![0.0f32; audio_buf.len()];
-
-    whisper_rs::convert_integer_to_float_audio(&audio_buf, &mut output)?;
-    Ok(output)
-    // temp_file is automatically deleted when it goes out of scope here
+pub fn read_file<P: AsRef<Path>>(input: P, pb: &impl Progress) -> Result<Vec<f32>> {
+    Ok(extract(input, None, pb)?.samples)
 }
 
-#[allow(dead_code)]
-pub fn file<P: AsRef<Path>>(audio_file_path: P, pb: &impl Progress) -> Result<NamedTempFile> {
-    let temp_file = use_ffmpeg(&audio_file_path, pb)?;
-    Ok(temp_file)
+pub fn file<P: AsRef<Path>>(input: P, pb: &impl Progress) -> Result<NamedTempFile> {
+    Ok(extract(input, None, pb)?.file)
 }
