@@ -23,7 +23,18 @@ pub struct TimingReport {
     pub timeline_origin_seconds: f64,
     pub duration_cs: i64,
     pub alignment_status: String,
+    pub alignment_seconds: f64,
+    pub runtime: Option<AlignmentRuntime>,
     pub segments: Vec<TimingChange>,
+}
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AlignmentRuntime {
+    pub device: String,
+    pub model: String,
+    pub model_load_seconds: f64,
+    pub processing_seconds: f64,
+    pub total_seconds: f64,
+    pub fallback_reason: Option<String>,
 }
 #[derive(Debug, Serialize)]
 pub struct TimingChange {
@@ -35,6 +46,10 @@ pub struct TimingChange {
     pub status: String,
     pub score: Option<f64>,
     pub coverage: Option<f64>,
+    pub acoustic_start: Option<i64>,
+    pub acoustic_end: Option<i64>,
+    pub end_preserved: bool,
+    pub end_padding_cs: i64,
 }
 pub struct RefinedTranscript {
     pub segments: Vec<TranscriptSegment>,
@@ -52,6 +67,14 @@ struct Candidate {
 #[derive(Deserialize)]
 struct Response {
     candidates: Vec<Candidate>,
+    #[serde(default)]
+    runtime: Option<AlignmentRuntime>,
+}
+
+#[derive(Deserialize)]
+struct AlignmentProgress {
+    phase: String,
+    completed: usize,
 }
 
 pub fn validate_config(conf: &AlignmentConfig) -> Result<()> {
@@ -63,9 +86,11 @@ pub fn validate_config(conf: &AlignmentConfig) -> Result<()> {
         || !(0.0..=1.0).contains(&conf.min_score)
         || !conf.min_coverage.is_finite()
         || !(0.0..=1.0).contains(&conf.min_coverage)
+        || !conf.end_padding_seconds.is_finite()
+        || !(0.0..=1.0).contains(&conf.end_padding_seconds)
         || conf.timeout_seconds == 0
     {
-        bail!("Invalid alignment settings: padding/shift must be 0–10 seconds, score/coverage 0–1, timeout positive");
+        bail!("Invalid alignment settings: search padding/shift must be 0–10 seconds, end padding 0–1 seconds, score/coverage 0–1, timeout positive");
     }
     Ok(())
 }
@@ -95,11 +120,13 @@ fn run_aligner(
     language: &str,
     segments: &[TranscriptSegment],
     conf: &AlignmentConfig,
+    pb: &impl Progress,
 ) -> Result<Response> {
     let temp = TempDir::new()?;
     let script = temp.path().join("align.py");
     let request = temp.path().join("request.json");
     let output = temp.path().join("response.json");
+    let progress = temp.path().join("progress.json");
     std::fs::write(&script, include_str!("align.py"))?;
     let duration = audio.duration_cs() as f64 / 100.0;
     let items: Vec<_> = segments.iter().enumerate().map(|(id, s)| {
@@ -114,7 +141,8 @@ fn run_aligner(
     std::fs::write(
         &request,
         serde_json::to_vec(&serde_json::json!({
-            "audio": audio.file.path(), "language": language, "model": conf.model, "segments": items
+            "audio": audio.file.path(), "language": language, "model": conf.model,
+            "device": conf.device, "segments": items, "progress": progress
         }))?,
     )?;
     let mut stderr = NamedTempFile::new()?;
@@ -129,7 +157,27 @@ fn run_aligner(
         .spawn()
         .context("Cannot start alignment Python; run scripts/setup_alignment.py")?;
     let started = Instant::now();
+    pb.set_length(100);
+    pb.set_position(0);
+    pb.set_message("Loading alignment model...");
+    let mut last_progress = (String::new(), usize::MAX);
     let status = loop {
+        if let Ok(file) = std::fs::File::open(&progress) {
+            if let Ok(update) = serde_json::from_reader::<_, AlignmentProgress>(file) {
+                if update.completed <= segments.len()
+                    && (update.phase.as_str(), update.completed)
+                        != (last_progress.0.as_str(), last_progress.1)
+                {
+                    match update.phase.as_str() {
+                        "loading_model" => pb.set_message("Loading alignment model..."),
+                        "aligning" => pb.set_message("Aligning transcript to audio..."),
+                        _ => {}
+                    }
+                    pb.set_position((100 * update.completed / segments.len().max(1)) as u64);
+                    last_progress = (update.phase, update.completed);
+                }
+            }
+        }
         match child.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) => {}
@@ -207,7 +255,11 @@ fn apply_candidates(
                     "excessive_shift"
                 } else {
                     s.start = start_cs;
-                    s.end = end_cs;
+                    s.end = if conf.preserve_original_end {
+                        end_cs.max(s.end)
+                    } else {
+                        end_cs
+                    };
                     "aligned"
                 }
                 .into();
@@ -224,6 +276,16 @@ fn apply_candidates(
             status,
             score: c.score.filter(|v| v.is_finite()),
             coverage: c.coverage.filter(|v| v.is_finite()),
+            acoustic_start: c
+                .start
+                .filter(|v| v.is_finite())
+                .map(|v| (v * 100.0).round() as i64),
+            acoustic_end: c
+                .end
+                .filter(|v| v.is_finite())
+                .map(|v| (v * 100.0).round() as i64),
+            end_preserved: false,
+            end_padding_cs: 0,
         });
     }
     // Reject newly introduced overlaps/order reversals, rather than truncating words.
@@ -252,6 +314,30 @@ fn apply_candidates(
             changes[i].status = "neighbor_conflict".into();
         }
     }
+    // Subtitle display needs a short tail after the acoustic boundary. Apply it only
+    // to accepted candidates, without shortening a fallback or crossing the next cue.
+    for i in 0..segments.len() {
+        if changes[i].status != "aligned" {
+            continue;
+        }
+        changes[i].end_preserved = conf.preserve_original_end
+            && changes[i]
+                .acoustic_end
+                .is_some_and(|end| end < original[i].end);
+        let before = segments[i].end;
+        let next_start = segments.get(i + 1).map_or(duration_cs, |s| s.start);
+        let ceiling = next_start.max(before).min(duration_cs).min(
+            original[i]
+                .end
+                .saturating_add((conf.max_shift_seconds * 100.0).round() as i64),
+        );
+        segments[i].end = before
+            .saturating_add((conf.end_padding_seconds * 100.0).round() as i64)
+            .min(ceiling)
+            .max(before);
+        changes[i].end = segments[i].end;
+        changes[i].end_padding_cs = segments[i].end - before;
+    }
     Ok(changes)
 }
 
@@ -268,31 +354,39 @@ pub fn refine(
         bail!("Transcript extends beyond decoded audio");
     }
     let mut report = TimingReport {
-        version: 1,
+        version: 2,
         time_unit: "centiseconds",
         language: language.into(),
         audio_stream: audio.stream_index,
         timeline_origin_seconds: audio.timeline_origin_seconds,
         duration_cs: audio.duration_cs(),
         alignment_status: "off".into(),
+        alignment_seconds: 0.0,
+        runtime: None,
         segments: Vec::new(),
     };
     if conf.mode != AlignmentMode::Off && !segments.is_empty() {
         pb.set_message("Aligning transcript to audio...");
         // Apply to a copy; malformed output must never leave partially modified times.
         let mut proposed = segments.clone();
-        match run_aligner(audio, language, &segments, conf).and_then(|response| {
-            apply_candidates(
+        let started = Instant::now();
+        let result = run_aligner(audio, language, &segments, conf, pb).and_then(|response| {
+            let changes = apply_candidates(
                 &mut proposed,
                 response.candidates,
                 audio.duration_cs(),
                 conf,
-            )
-        }) {
-            Ok(changes) => {
+            )?;
+            Ok((changes, response.runtime))
+        });
+        report.alignment_seconds = started.elapsed().as_secs_f64();
+        match result {
+            Ok((changes, runtime)) => {
                 report.segments = changes;
+                report.runtime = runtime;
                 report.alignment_status = "completed".into();
                 segments = proposed;
+                pb.set_position(100);
             }
             Err(error) if conf.mode == AlignmentMode::Required => {
                 return Err(error.context("Required alignment failed"))
@@ -322,6 +416,10 @@ pub fn refine(
                 status: "original".into(),
                 score: None,
                 coverage: None,
+                acoustic_start: None,
+                acoustic_end: None,
+                end_preserved: false,
+                end_padding_cs: 0,
             })
             .collect();
     }
@@ -355,12 +453,58 @@ mod tests {
             &mut s,
             vec![candidate(0, 1.23, 2.78)],
             1000,
-            &AlignmentConfig::default(),
+            &AlignmentConfig {
+                preserve_original_end: false,
+                end_padding_seconds: 0.0,
+                ..Default::default()
+            },
         )
         .unwrap();
         assert_eq!((s[0].start, s[0].end), (123, 278));
         assert_eq!(s[0].text, " 원문 그대로! ");
         assert_eq!(r[0].original_start, 100);
+    }
+    #[test]
+    fn subtitle_end_never_moves_earlier_by_default_and_has_a_display_tail() {
+        let mut s = vec![segment(100, 300)];
+        let r = apply_candidates(
+            &mut s,
+            vec![candidate(0, 1.23, 2.0)],
+            1000,
+            &AlignmentConfig::default(),
+        )
+        .unwrap();
+        assert_eq!((s[0].start, s[0].end), (123, 320));
+        assert_eq!(r[0].acoustic_end, Some(200));
+        assert!(r[0].end_preserved);
+        assert_eq!(r[0].end_padding_cs, 20);
+    }
+    #[test]
+    fn display_tail_stops_at_next_caption_and_audio_end() {
+        let mut s = vec![segment(100, 300), segment(350, 500)];
+        let r = apply_candidates(
+            &mut s,
+            vec![candidate(0, 1.1, 2.8), candidate(1, 3.1, 4.8)],
+            510,
+            &AlignmentConfig::default(),
+        )
+        .unwrap();
+        assert_eq!(s[0].end, 310);
+        assert_eq!(s[1].end, 510);
+        assert_eq!(r[0].end_padding_cs, 10);
+        assert_eq!(r[1].end_padding_cs, 10);
+    }
+    #[test]
+    fn later_acoustic_end_is_kept_and_padding_respects_shift_limit() {
+        let mut s = vec![segment(100, 300)];
+        let conf = AlignmentConfig {
+            max_shift_seconds: 0.2,
+            ..Default::default()
+        };
+        let r = apply_candidates(&mut s, vec![candidate(0, 1.0, 3.2)], 1000, &conf).unwrap();
+        assert_eq!(s[0].end, 320);
+        assert!(!r[0].end_preserved);
+        assert_eq!(r[0].end_padding_cs, 0);
     }
     #[test]
     fn rejects_bad_ranges_low_confidence_and_large_shifts() {

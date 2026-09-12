@@ -496,12 +496,26 @@ pub enum AlignmentMode {
     Off,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AlignmentDevice {
+    #[default]
+    Auto,
+    Cpu,
+    Mps,
+    Cuda,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 #[serde(default)]
 pub struct AlignmentConfig {
     pub mode: AlignmentMode,
     pub python: Option<PathBuf>,
     pub model: Option<String>,
+    pub device: AlignmentDevice,
+    /// CTC character boundaries can end before the final sound has decayed.
+    pub preserve_original_end: bool,
+    pub end_padding_seconds: f64,
     pub search_padding_seconds: f64,
     pub max_shift_seconds: f64,
     pub min_score: f64,
@@ -515,6 +529,9 @@ impl Default for AlignmentConfig {
             mode: AlignmentMode::Auto,
             python: None,
             model: None,
+            device: AlignmentDevice::Auto,
+            preserve_original_end: true,
+            end_padding_seconds: 0.2,
             search_padding_seconds: 1.0,
             max_shift_seconds: 2.0,
             min_score: 0.3,

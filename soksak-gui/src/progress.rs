@@ -57,6 +57,11 @@ impl Progress for GuiProgress {
                     (t!("progress.aligning")).to_string(),
                 ));
             }
+            "Loading alignment model..." => {
+                let _ = self.tx.send(ProgressEvent::SetMessage(
+                    (t!("progress.loading_alignment_model")).to_string(),
+                ));
+            }
             "Alignment unavailable; original timing retained (see timing report)" => {
                 let _ = self.tx.send(ProgressEvent::SetMessage(
                     (t!("progress.alignment_unavailable")).to_string(),

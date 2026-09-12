@@ -172,9 +172,11 @@ python3 scripts/setup_alignment.py
 
 With `uv` installed, the script creates a Python 3.12 environment. Otherwise, run it with
 Python 3.10–3.13. The default location is `~/.soksak/alignment-venv`. This does not modify
-system Python. WhisperX's language-specific CTC model aligns the existing text on the
-CPU; its speech recognition and diarization pipelines are not used. Language models
-download on first use, then use the local cache. Audio and transcripts stay local.
+system Python. WhisperX's language-specific CTC model aligns the existing text; its speech
+recognition and diarization pipelines are not used. By default it uses CUDA when available,
+Apple GPU (MPS) on supported Macs, and CPU otherwise. An accelerator failure in `device: auto`
+retries on CPU and records the reason. Language models download on first use, then load
+from the local cache without a Hugging Face network check. Audio and transcripts stay local.
 
 ```yaml
 whisper:
@@ -182,6 +184,9 @@ whisper:
   # audio_stream: 1  # Absolute input stream index, NOT the audio-only ordinal
   alignment:
     mode: auto
+    device: auto  # auto, cpu, mps, cuda
+    preserve_original_end: true
+    end_padding_seconds: 0.2
     search_padding_seconds: 1.0
     max_shift_seconds: 2.0
     min_score: 0.3
@@ -211,6 +216,29 @@ and a minimum mean acoustic score. This score is a heuristic, not a calibrated p
 Invalid ranges, excessive shifts and new overlaps/order reversals are rejected. Search
 windows over 90 seconds are left unchanged. The `.timing.json` report records each
 segment's original and final times, score, coverage, and acceptance/fallback reason.
+
+An acoustic character boundary can precede the end of the final spoken sound. To avoid
+captions disappearing mid-speech, accepted alignments retain at least the original Whisper
+end time by default and add up to 200 ms of display time. The tail stops at the next caption,
+the audio end, or the configured shift limit. Rejected alignments keep the original range.
+Set `preserve_original_end: false` to permit shorter end times, and `end_padding_seconds: 0`
+for acoustic boundaries without a display tail. The report separates `acoustic_start` /
+`acoustic_end` from final display times and records `end_preserved` / `end_padding_cs`.
+
+The GUI shows model preparation separately and updates alignment progress after each
+segment. Report version 2 includes `alignment_seconds` and `runtime` (device, model,
+model-load time, processing time, and any CPU fallback). The first GPU inference can take
+longer while kernels are prepared. Rust debug/release builds use the same separate Python
+alignment runtime, so a release GUI alone does not accelerate a CPU-only alignment setting.
+
+For an optimized GUI build, run from the repository root:
+
+```sh
+cargo run --release -p soksak-gui --features gpui/runtime_shaders
+```
+
+`runtime_shaders` lets GPUI compile shaders when the app starts, which also works when
+Xcode's optional Metal command-line toolchain is not installed.
 
 ### Checking timing changes
 

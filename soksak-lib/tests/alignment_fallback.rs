@@ -1,5 +1,5 @@
 use soksak_lib::{
-    config::{AlignmentConfig, AlignmentMode, WhisperConfig},
+    config::{AlignmentConfig, AlignmentDevice, AlignmentMode, WhisperConfig},
     ffmpeg_decoder::ExtractedAudio,
     progress::Progress,
     transcribe::{alignment, validate_timestamps, TranscriptSegment},
@@ -77,6 +77,9 @@ fn timestamp_validation_rejects_invalid_and_reversed_ranges_but_allows_overlap()
 fn existing_yaml_profiles_keep_working_and_partial_alignment_uses_defaults() {
     let old: WhisperConfig = serde_yaml::from_str("vad: true\nbeam_size: 5\n").unwrap();
     assert_eq!(old.alignment.mode, AlignmentMode::Auto);
+    assert_eq!(old.alignment.device, AlignmentDevice::Auto);
+    assert!(old.alignment.preserve_original_end);
+    assert_eq!(old.alignment.end_padding_seconds, 0.2);
     let partial: WhisperConfig = serde_yaml::from_str("alignment:\n  mode: required\n").unwrap();
     assert_eq!(partial.alignment.mode, AlignmentMode::Required);
     assert_eq!(partial.alignment.min_coverage, 0.8);

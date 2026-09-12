@@ -88,6 +88,10 @@ async fn check_sync(vad: bool) {
             "Alignment must not rewrite transcript text"
         );
         assert!(after.start >= 0 && after.end <= 5200 && after.start < after.end);
+        assert!(
+            after.end >= before.end,
+            "Default alignment must not shorten subtitle display"
+        );
         if vad {
             assert!(after.start >= 490);
             assert!(
@@ -101,6 +105,12 @@ async fn check_sync(vad: bool) {
     )
     .unwrap();
     assert_eq!(report["alignment_status"], "completed");
+    assert!(report["alignment_seconds"].as_f64().unwrap() > 0.0);
+    assert!(matches!(
+        report["runtime"]["device"].as_str(),
+        Some("cpu" | "mps" | "cuda")
+    ));
+    eprintln!("Alignment runtime: {}", report["runtime"]);
     if !vad {
         // Control run: Whisper can anchor captions at 0/30 seconds during silence.
         // Large alignment corrections must fall back rather than bypass max_shift.
